@@ -61,199 +61,295 @@ export function getGlobalGoogleClientId(): string {
   return DEFAULT_GOOGLE_CLIENT_ID;
 }
 
-export const STARTER_TRACKS: YouTubeTrack[] = [
-  {
-    videoId: 'sCNlt5nvSI8',
-    title: 'FKJ & Masego — Tadow (Official Live Studio Session)',
-    channelTitle: 'Fkj',
-    thumbnailUrl: 'https://i.ytimg.com/vi/sCNlt5nvSI8/hqdefault.jpg',
-    durationSec: 482,
-    durationFormatted: '08:02',
-  },
-  {
-    videoId: 'qebVUb_cM_E',
-    title: 'Khruangbin — NPR Music Tiny Desk Concert',
-    channelTitle: 'NPR Music',
-    thumbnailUrl: 'https://i.ytimg.com/vi/qebVUb_cM_E/hqdefault.jpg',
-    durationSec: 925,
-    durationFormatted: '15:25',
-  },
-  {
-    videoId: 'jfKfPfyJRdk',
-    title: 'lofi hip hop radio — beats to relax/study to',
-    channelTitle: 'Lofi Girl',
-    thumbnailUrl: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg',
-    durationSec: 3600,
-    durationFormatted: 'LIVE',
-  },
-  {
-    videoId: '4xDzrJKXOOY',
-    title: 'Synthwave Radio — ChillSynth / Retro Future Beats',
-    channelTitle: 'Lofi Girl Synthwave',
-    thumbnailUrl: 'https://i.ytimg.com/vi/4xDzrJKXOOY/hqdefault.jpg',
-    durationSec: 3600,
-    durationFormatted: 'LIVE',
-  },
-  {
-    videoId: '5qap5aO4i9A',
-    title: 'Chillhop Essentials — Late Night Instrumental Mix',
-    channelTitle: 'Chillhop Music',
-    thumbnailUrl: 'https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault.jpg',
-    durationSec: 2140,
-    durationFormatted: '35:40',
-  },
-  {
-    videoId: 'c0-hvjV2A5Y',
-    title: 'Fred again.. — Boiler Room: London Live Set',
-    channelTitle: 'Boiler Room',
-    thumbnailUrl: 'https://i.ytimg.com/vi/c0-hvjV2A5Y/hqdefault.jpg',
-    durationSec: 4110,
-    durationFormatted: '68:30',
-  },
-];
-
-function getInitialRooms(): JamRoom[] {
-  return [
-    {
-      roomId: 'room_fkj_masego',
-      roomCode: 'FKJ99',
-      name: 'FKJ & Masego Lounge',
-      description: 'Groovy neo-soul, saxophone improvisations, and smooth beats.',
-      genreTag: 'Electronic / Soul',
-      isPrivate: false,
-      hostUserId: 'usr_g_78ed7f0b',
-      hostUsername: 'arshadsayed232',
-      hostAvatarUrl:
-        'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-      activeMemberCount: 1,
-      createdAt: Date.now() - 3600000,
-      playback: {
-        roomId: 'room_fkj_masego',
-        videoId: STARTER_TRACKS[0].videoId,
-        track: STARTER_TRACKS[0],
-        status: 'playing',
-        positionSec: 45,
-        serverTimestamp: Date.now(),
-        initiatedByUserId: 'usr_g_78ed7f0b',
-        initiatedByUsername: 'arshadsayed232',
-        historyIndex: 0,
-      },
-      queue: [
-        {
-          itemId: 'q_1',
-          roomId: 'room_fkj_masego',
-          orderIndex: 0,
-          track: STARTER_TRACKS[0],
-          addedByUserId: 'usr_g_78ed7f0b',
-          addedByUsername: 'arshadsayed232',
-          addedByAvatar:
-            'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-          addedAt: Date.now() - 3600000,
-          upvotes: [],
-        },
-        {
-          itemId: 'q_2',
-          roomId: 'room_fkj_masego',
-          orderIndex: 1,
-          track: STARTER_TRACKS[1],
-          addedByUserId: 'usr_g_78ed7f0b',
-          addedByUsername: 'arshadsayed232',
-          addedByAvatar:
-            'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-          addedAt: Date.now() - 3500000,
-          upvotes: [],
-        },
-      ],
-      members: [
-        {
-          roomId: 'room_fkj_masego',
-          userId: 'usr_g_78ed7f0b',
-          username: 'arshadsayed232',
-          displayName: 'Arshad Sayed',
-          avatarUrl:
-            'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-          role: 'host',
-          isOnline: true,
-          inVoiceChat: false,
-          isMuted: false,
-          isSpeaking: false,
-          joinedAt: Date.now() - 3600000,
-        },
-      ],
-      messages: [
-        {
-          messageId: 'msg_1',
-          roomId: 'room_fkj_masego',
-          userId: 'usr_g_78ed7f0b',
-          username: 'arshadsayed232',
-          displayName: 'Arshad Sayed',
-          avatarUrl:
-            'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-          content: 'Welcome to JamTogether! Queue your favorite tracks and enjoy.',
-          type: 'text',
-          timestamp: Date.now() - 1800000,
-          reactions: {},
-        },
-      ],
-    },
-    {
-      roomId: 'room_lofi_study',
-      roomCode: 'LOFI1',
-      name: 'Lofi Study & Code Chill',
-      description: 'Calm lo-fi hip hop instrumentals to study, relax, and code.',
-      genreTag: 'Lo-Fi / Chillhop',
-      isPrivate: false,
-      hostUserId: 'host_maya',
-      hostUsername: 'maya_beats',
-      hostAvatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=maya',
-      activeMemberCount: 1,
-      createdAt: Date.now() - 7200000,
-      playback: {
-        roomId: 'room_lofi_study',
-        videoId: STARTER_TRACKS[2].videoId,
-        track: STARTER_TRACKS[2],
-        status: 'playing',
-        positionSec: 120,
-        serverTimestamp: Date.now(),
-        initiatedByUserId: 'host_maya',
-        initiatedByUsername: 'maya_beats',
-        historyIndex: 0,
-      },
-      queue: [],
-      members: [],
-      messages: [],
-    },
-    {
-      roomId: 'room_synthwave',
-      roomCode: 'NEON8',
-      name: 'Synthwave Night Ride',
-      description: 'Retro synth, cyber vibes, and 80s inspired electronic melodies.',
-      genreTag: 'Synthwave / Electronic',
-      isPrivate: false,
-      hostUserId: 'host_neon',
-      hostUsername: 'neon_rider',
-      hostAvatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=neon',
-      activeMemberCount: 1,
-      createdAt: Date.now() - 10800000,
-      playback: {
-        roomId: 'room_synthwave',
-        videoId: STARTER_TRACKS[3].videoId,
-        track: STARTER_TRACKS[3],
-        status: 'playing',
-        positionSec: 60,
-        serverTimestamp: Date.now(),
-        initiatedByUserId: 'host_neon',
-        initiatedByUsername: 'neon_rider',
-        historyIndex: 0,
-      },
-      queue: [],
-      members: [],
-      messages: [],
-    },
-  ];
+/**
+ * Extracts 11-char YouTube Video ID from any URL or raw ID string.
+ */
+export function extractYouTubeId(input: string): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const match = trimmed.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/
+  );
+  return match ? match[1] : null;
 }
 
-function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): T {
+/**
+ * Resolves metadata for a direct YouTube video URL or ID using official CORS oEmbed.
+ */
+export async function resolveDirectYouTubeVideo(videoId: string): Promise<YouTubeTrack> {
+  try {
+    const res = await fetch(
+      `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        videoId,
+        title: data.title || `YouTube Video (${videoId})`,
+        channelTitle: data.author_name || 'YouTube',
+        thumbnailUrl: data.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        durationSec: 240,
+        durationFormatted: '04:00',
+      };
+    }
+  } catch {
+    // fallback to clean canonical item
+  }
+  return {
+    videoId,
+    title: `YouTube Video (${videoId})`,
+    channelTitle: 'YouTube',
+    thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    durationSec: 240,
+    durationFormatted: '04:00',
+  };
+}
+
+/**
+ * Real-time live YouTube search engine querying YouTube directly with CORS support.
+ */
+export async function searchLiveYouTube(
+  query: string
+): Promise<{ items: YouTubeTrack[]; source: string }> {
+  const q = query.trim();
+  if (!q) {
+    return { items: [], source: 'youtube-live' };
+  }
+
+  // 1. Direct Video ID or URL
+  const directId = extractYouTubeId(q);
+  if (directId) {
+    const track = await resolveDirectYouTubeVideo(directId);
+    return { items: [track], source: 'youtube-direct' };
+  }
+
+  // 2. Official YouTube Data API v3 if key configured
+  const apiKey =
+    localStorage.getItem('jamtogether_admin_youtube_api_key') ||
+    (import.meta as any).env?.VITE_YOUTUBE_API_KEY;
+  if (apiKey && apiKey !== 'MY_YOUTUBE_API_KEY' && apiKey.length > 10) {
+    try {
+      const params = new URLSearchParams({
+        part: 'snippet',
+        q,
+        type: 'video',
+        videoEmbeddable: 'true',
+        maxResults: '25',
+        key: apiKey,
+      });
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const tracks: YouTubeTrack[] = data.items
+            .filter((item: any) => item.id?.videoId)
+            .map((item: any) => ({
+              videoId: item.id.videoId,
+              title: item.snippet?.title || 'YouTube Track',
+              channelTitle: item.snippet?.channelTitle || 'YouTube Artist',
+              thumbnailUrl:
+                item.snippet?.thumbnails?.high?.url ||
+                item.snippet?.thumbnails?.medium?.url ||
+                `https://i.ytimg.com/vi/${item.id.videoId}/hqdefault.jpg`,
+              durationSec: 240,
+              durationFormatted: '04:00',
+            }));
+          if (tracks.length > 0) {
+            return { items: tracks, source: 'youtube-data-api-v3' };
+          }
+        }
+      }
+    } catch {
+      // Continue to live public instances
+    }
+  }
+
+  // 3. Live CORS YouTube search instances (Piped public network)
+  const instances = [
+    'https://api.piped.private.coffee',
+    'https://pipedapi.leptons.xyz',
+    'https://piped-api.lunar.icu',
+  ];
+
+  for (const base of instances) {
+    try {
+      const res = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=videos`, {
+        signal: AbortSignal.timeout(4500),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const tracks: YouTubeTrack[] = data.items
+            .filter((item: any) => item.url && item.title)
+            .map((item: any) => {
+              const videoId = (item.url || '').replace('/watch?v=', '').replace(/&.*/, '');
+              const sec =
+                typeof item.duration === 'number' && item.duration > 0 ? item.duration : 240;
+              const mins = Math.floor(sec / 60);
+              const rem = sec % 60;
+              return {
+                videoId,
+                title: item.title,
+                channelTitle: item.uploaderName || 'YouTube Artist',
+                thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                durationSec: sec,
+                durationFormatted: `${mins}:${rem.toString().padStart(2, '0')}`,
+              };
+            })
+            .filter((t: YouTubeTrack) => t.videoId && t.videoId.length === 11);
+
+          if (tracks.length > 0) {
+            return { items: tracks, source: 'youtube-live' };
+          }
+        }
+      }
+    } catch {
+      // Try next instance
+    }
+  }
+
+  return { items: [], source: 'youtube-live' };
+}
+
+/**
+ * Live YouTube Playlist resolver querying YouTube directly.
+ */
+export async function resolveLiveYouTubePlaylist(
+  playlistUrlOrId: string
+): Promise<{ title: string; playlistId: string; tracks: YouTubeTrack[] }> {
+  const cleanId =
+    playlistUrlOrId.replace(/.*list=([^&]+).*/, '$1').trim() || playlistUrlOrId.trim();
+
+  // 1. YouTube Data API v3 if key available
+  const apiKey =
+    localStorage.getItem('jamtogether_admin_youtube_api_key') ||
+    (import.meta as any).env?.VITE_YOUTUBE_API_KEY;
+  if (apiKey && apiKey !== 'MY_YOUTUBE_API_KEY' && apiKey.length > 10) {
+    try {
+      const params = new URLSearchParams({
+        part: 'snippet',
+        maxResults: '50',
+        playlistId: cleanId,
+        key: apiKey,
+      });
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const tracks: YouTubeTrack[] = data.items
+            .filter((item: any) => item.snippet?.resourceId?.videoId)
+            .map((item: any) => ({
+              videoId: item.snippet.resourceId.videoId,
+              title: item.snippet?.title || 'YouTube Track',
+              channelTitle:
+                item.snippet?.videoOwnerChannelTitle ||
+                item.snippet?.channelTitle ||
+                'YouTube Artist',
+              thumbnailUrl:
+                item.snippet?.thumbnails?.high?.url ||
+                `https://i.ytimg.com/vi/${item.snippet.resourceId.videoId}/hqdefault.jpg`,
+              durationSec: 240,
+              durationFormatted: '04:00',
+            }));
+          return {
+            title: `Playlist (${cleanId.slice(0, 10)})`,
+            playlistId: cleanId,
+            tracks,
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Direct Video ID fallback if a single video URL was entered
+  const directId = extractYouTubeId(playlistUrlOrId);
+  if (directId) {
+    const track = await resolveDirectYouTubeVideo(directId);
+    return {
+      title: track.title,
+      playlistId: cleanId,
+      tracks: [track],
+    };
+  }
+
+  // 3. Piped playlist inspection
+  try {
+    const res = await fetch(`https://api.piped.private.coffee/playlists/${cleanId}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const streams = Array.isArray(data.relatedStreams) ? data.relatedStreams : [];
+      const tracks: YouTubeTrack[] = streams
+        .filter((item: any) => item.url)
+        .map((item: any) => {
+          const videoId = (item.url || '').replace('/watch?v=', '').replace(/&.*/, '');
+          const sec = typeof item.duration === 'number' && item.duration > 0 ? item.duration : 240;
+          return {
+            videoId,
+            title: item.title,
+            channelTitle: item.uploaderName || 'YouTube Artist',
+            thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            durationSec: sec,
+            durationFormatted: `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, '0')}`,
+          };
+        });
+
+      return {
+        title: data.name || `YouTube Playlist (${cleanId.slice(0, 10)})`,
+        playlistId: cleanId,
+        tracks,
+      };
+    }
+  } catch {}
+
+  return {
+    title: `Playlist (${cleanId.slice(0, 10)})`,
+    playlistId: cleanId,
+    tracks: [],
+  };
+}
+
+export function getInitialRooms(): JamRoom[] {
+  return [];
+}
+
+export function getCleanLocalRooms(): JamRoom[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_ROOMS_KEY);
+    if (!raw) return [];
+    const rooms: JamRoom[] = JSON.parse(raw);
+    if (!Array.isArray(rooms)) return [];
+    const filtered = rooms.filter(
+      (r) =>
+        r &&
+        r.roomId !== 'room_fkj_masego' &&
+        r.roomId !== 'room_lofi_study' &&
+        r.roomId !== 'room_synthwave'
+    );
+    if (filtered.length !== rooms.length) {
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(filtered));
+    }
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+async function handleOfflineFallback<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
   let body: any = {};
   if (options.body && typeof options.body === 'string') {
@@ -300,7 +396,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
       avatarUrl:
         body.picture ||
         body.avatarUrl ||
-        'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
+        `https://api.dicebear.com/7.x/bottts/svg?seed=${email}`,
       avatarBase64: body.picture || body.avatarUrl || '',
       bio: 'Music enthusiast jamming on JamTogether.',
       favoriteGenres: ['Electronic', 'Indie', 'Pop'],
@@ -385,14 +481,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
 
   // 7. Dashboard (/api/dashboard)
   if (endpoint === '/api/dashboard') {
-    let localRooms: JamRoom[] = [];
-    try {
-      const stored = localStorage.getItem(LOCAL_ROOMS_KEY);
-      localRooms = stored ? JSON.parse(stored) : getInitialRooms();
-    } catch {
-      localRooms = getInitialRooms();
-    }
-    localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+    const localRooms = getCleanLocalRooms();
 
     let currentUser: UserProfile | null = null;
     try {
@@ -435,13 +524,13 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
 
   // 8. Rooms List & Create (/api/rooms)
   if (endpoint === '/api/rooms') {
+    if (method === 'GET') {
+      const localRooms = getCleanLocalRooms();
+      return { rooms: localRooms } as any;
+    }
+
     if (method === 'POST') {
-      let localRooms: JamRoom[] = [];
-      try {
-        localRooms = JSON.parse(localStorage.getItem(LOCAL_ROOMS_KEY) || '[]');
-      } catch {
-        localRooms = getInitialRooms();
-      }
+      const localRooms = getCleanLocalRooms();
 
       let currentUser: UserProfile | null = null;
       try {
@@ -451,10 +540,23 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
         // ignore
       }
 
-      const initialTrack =
-        STARTER_TRACKS.find((t) => t.videoId === body.initialVideoId) || STARTER_TRACKS[0];
+      let initialTrack: YouTubeTrack | undefined;
+      const initialInput = (body.initialSong || body.initialVideoId || '').trim();
+      if (initialInput) {
+        const vidId = extractYouTubeId(initialInput);
+        if (vidId) {
+          initialTrack = await resolveDirectYouTubeVideo(vidId);
+        } else {
+          const searchRes = await searchLiveYouTube(initialInput);
+          if (searchRes.items.length > 0) {
+            initialTrack = searchRes.items[0];
+          }
+        }
+      }
+
+      const roomId = 'jam_' + Math.random().toString(36).substring(2, 8);
       const newRoom: JamRoom = {
-        roomId: 'jam_' + Math.random().toString(36).substring(2, 8),
+        roomId,
         roomCode: Math.random().toString(36).substring(2, 6).toUpperCase(),
         name: body.name || 'My Jam Session',
         description: body.description || '',
@@ -466,33 +568,35 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
         activeMemberCount: 1,
         createdAt: Date.now(),
         playback: {
-          roomId: '',
-          videoId: initialTrack.videoId,
-          track: initialTrack,
-          status: 'playing',
+          roomId,
+          videoId: initialTrack ? initialTrack.videoId : '',
+          track: initialTrack || null,
+          status: initialTrack ? 'playing' : 'paused',
           positionSec: 0,
           serverTimestamp: Date.now(),
           initiatedByUserId: currentUser?.userId || 'guest_host',
           initiatedByUsername: currentUser?.username || 'host',
           historyIndex: 0,
         },
-        queue: [
-          {
-            itemId: 'q_' + Date.now(),
-            roomId: '',
-            orderIndex: 0,
-            track: initialTrack,
-            addedByUserId: currentUser?.userId || 'guest_host',
-            addedByUsername: currentUser?.username || 'host',
-            addedByAvatar: currentUser?.avatarUrl || '',
-            addedAt: Date.now(),
-            upvotes: [],
-          },
-        ],
+        queue: initialTrack
+          ? [
+              {
+                itemId: 'q_' + Date.now(),
+                roomId,
+                orderIndex: 0,
+                track: initialTrack || null,
+                addedByUserId: currentUser?.userId || 'guest_host',
+                addedByUsername: currentUser?.username || 'host',
+                addedByAvatar: currentUser?.avatarUrl || '',
+                addedAt: Date.now(),
+                upvotes: [],
+              },
+            ]
+          : [],
         members: currentUser
           ? [
               {
-                roomId: '',
+                roomId,
                 userId: currentUser.userId,
                 username: currentUser.username,
                 displayName: currentUser.displayName,
@@ -508,9 +612,6 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           : [],
         messages: [],
       };
-      newRoom.playback.roomId = newRoom.roomId;
-      if (newRoom.queue && newRoom.queue[0]) newRoom.queue[0].roomId = newRoom.roomId;
-      if (newRoom.members && newRoom.members[0]) newRoom.members[0].roomId = newRoom.roomId;
 
       localRooms.unshift(newRoom);
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
@@ -527,55 +628,12 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     const subId = parts[2]; // queue itemId, or 'reorder', 'playlist', 'user-playlist', messageId
     const subSub = parts[3]; // 'react' or playlistId
 
-    let localRooms: JamRoom[] = [];
-    try {
-      localRooms = JSON.parse(localStorage.getItem(LOCAL_ROOMS_KEY) || '[]');
-    } catch {
-      localRooms = getInitialRooms();
-    }
-    let room = localRooms.find((r) => r.roomId === targetRoomId);
+    const localRooms = getCleanLocalRooms();
+    const room = localRooms.find((r) => r.roomId === targetRoomId);
     if (!room) {
-      room = {
-        roomId: targetRoomId,
-        roomCode: targetRoomId.slice(-4).toUpperCase(),
-        name: 'Jam Lounge',
-        description: 'Synchronized listening space',
-        genreTag: 'Electronic / Indie',
-        isPrivate: false,
-        hostUserId: 'host',
-        hostUsername: 'host',
-        hostAvatarUrl: '',
-        activeMemberCount: 1,
-        createdAt: Date.now(),
-        playback: {
-          roomId: targetRoomId,
-          videoId: STARTER_TRACKS[0].videoId,
-          track: STARTER_TRACKS[0],
-          status: 'playing',
-          positionSec: 0,
-          serverTimestamp: Date.now(),
-          initiatedByUserId: 'host',
-          initiatedByUsername: 'host',
-          historyIndex: 0,
-        },
-        queue: [
-          {
-            itemId: 'q_' + Date.now(),
-            roomId: targetRoomId,
-            orderIndex: 0,
-            track: STARTER_TRACKS[0],
-            addedByUserId: 'host',
-            addedByUsername: 'host',
-            addedByAvatar: '',
-            addedAt: Date.now(),
-            upvotes: [],
-          },
-        ],
-        members: [],
-        messages: [],
-      };
-      localRooms.push(room);
+      throw new Error(`Room not found (${targetRoomId})`);
     }
+
     if (!room.queue) room.queue = [];
     if (!room.messages) room.messages = [];
     if (!room.members) room.members = [];
@@ -634,7 +692,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     // Queue (/api/rooms/:roomId/queue, /api/rooms/:roomId/queue/:itemId, /api/rooms/:roomId/queue/playlist, /api/rooms/:roomId/queue/user-playlist/:id, /api/rooms/:roomId/queue/reorder)
     if (subResource === 'queue') {
       if (subId === 'playlist' && method === 'POST') {
-        const tracksToAdd = Array.isArray(body.tracks) && body.tracks.length > 0 ? body.tracks : STARTER_TRACKS;
+        const tracksToAdd: YouTubeTrack[] = Array.isArray(body.tracks) ? body.tracks : [];
         let currentUser: UserProfile | null = null;
         try {
           currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
@@ -653,6 +711,14 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           upvotes: [],
         }));
         room.queue.push(...addedItems);
+        // If room playback was empty or paused without a track, start playing the first imported track
+        if ((!room.playback.videoId || !room.playback.track) && addedItems.length > 0) {
+          room.playback.videoId = addedItems[0].track.videoId;
+          room.playback.track = addedItems[0].track;
+          room.playback.status = 'playing';
+          room.playback.positionSec = 0;
+          room.playback.serverTimestamp = Date.now();
+        }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return {
           queue: room.queue,
@@ -670,7 +736,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           playlists = [];
         }
         const pl = playlists.find((p) => p.playlistId === playlistId);
-        const tracksToAdd = pl && Array.isArray(pl.tracks) && pl.tracks.length > 0 ? pl.tracks : STARTER_TRACKS;
+        const tracksToAdd: YouTubeTrack[] = pl && Array.isArray(pl.tracks) ? pl.tracks : [];
         let currentUser: UserProfile | null = null;
         try {
           currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
@@ -689,6 +755,13 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           upvotes: [],
         }));
         room.queue.push(...addedItems);
+        if ((!room.playback.videoId || !room.playback.track) && addedItems.length > 0) {
+          room.playback.videoId = addedItems[0].track.videoId;
+          room.playback.track = addedItems[0].track;
+          room.playback.status = 'playing';
+          room.playback.positionSec = 0;
+          room.playback.serverTimestamp = Date.now();
+        }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return {
           queue: room.queue,
@@ -726,6 +799,9 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
       }
 
       if (method === 'POST') {
+        if (!body.track) {
+          return { queue: room.queue } as any;
+        }
         let currentUser: UserProfile | null = null;
         try {
           currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
@@ -734,7 +810,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           itemId: 'q_' + Date.now(),
           roomId: targetRoomId,
           orderIndex: room.queue.length,
-          track: body.track || STARTER_TRACKS[0],
+          track: body.track,
           addedByUserId: body.userId || currentUser?.userId || 'user',
           addedByUsername: body.username || currentUser?.username || 'user',
           addedByAvatar: body.avatarUrl || currentUser?.avatarUrl || '',
@@ -742,6 +818,13 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
           upvotes: [],
         };
         room.queue.push(item);
+        if (!room.playback.videoId || !room.playback.track) {
+          room.playback.videoId = body.track.videoId;
+          room.playback.track = body.track;
+          room.playback.status = 'playing';
+          room.playback.positionSec = 0;
+          room.playback.serverTimestamp = Date.now();
+        }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return { queue: room.queue } as any;
       }
@@ -820,41 +903,19 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     }
   }
 
-  // 10. YouTube Search & Playlist
+  // 10. Live YouTube Search & Playlist Engine (no dummy data)
   if (endpoint.startsWith('/api/youtube/playlist')) {
     const url = new URL(endpoint, 'http://localhost');
     const plUrl = url.searchParams.get('url') || url.searchParams.get('playlistId') || '';
-    const cleanId = plUrl.replace(/.*list=([^&]+).*/, '$1') || 'PL_DEFAULT';
-    let title = 'Imported YouTube Playlist';
-    if (plUrl.includes('PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj')) {
-      title = 'Top Pop & Timeless Hits';
-    } else if (plUrl.includes('PLofht4PTcKYnaH8w5gkGPE8P2t88302ZX')) {
-      title = 'Lofi Girl — Beats to Relax & Study To';
-    } else if (plUrl.includes('PLsPEq58sL5f_8u2g776wZ-u4h48-X6v7V')) {
-      title = 'Boiler Room & Club Highlights';
-    } else {
-      title = `Playlist (${cleanId.slice(0, 10)})`;
-    }
-
-    return {
-      title,
-      playlistId: cleanId,
-      tracks: STARTER_TRACKS,
-    } as any;
+    const res = await resolveLiveYouTubePlaylist(plUrl);
+    return res as any;
   }
 
   if (endpoint.startsWith('/api/youtube/search')) {
     const url = new URL(endpoint, 'http://localhost');
-    const q = (url.searchParams.get('q') || '').toLowerCase().trim();
-    const filtered = q
-      ? STARTER_TRACKS.filter(
-          (t) => t.title.toLowerCase().includes(q) || t.channelTitle.toLowerCase().includes(q)
-        )
-      : STARTER_TRACKS;
-    return {
-      items: filtered.length > 0 ? filtered : STARTER_TRACKS,
-      source: 'offline-curated',
-    } as any;
+    const q = url.searchParams.get('q') || '';
+    const res = await searchLiveYouTube(q);
+    return res as any;
   }
 
   // 11. Playlists
@@ -915,12 +976,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     } catch {
       users = [];
     }
-    let localRooms: JamRoom[] = [];
-    try {
-      localRooms = JSON.parse(localStorage.getItem(LOCAL_ROOMS_KEY) || '[]');
-    } catch {
-      localRooms = getInitialRooms();
-    }
+    const localRooms = getCleanLocalRooms();
     let playlists: UserPlaylist[] = [];
     try {
       playlists = JSON.parse(localStorage.getItem(LOCAL_PLAYLISTS_KEY) || '[]');
@@ -940,15 +996,15 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
 
     return {
       counts: {
-        users: Math.max(users.length, 1),
+        users: users.length,
         rooms: localRooms.length,
-        members: 1,
-        queue: 2,
-        messages: 1,
+        members: localRooms.reduce((sum, r) => sum + (r.members?.length || 0), 0),
+        queue: localRooms.reduce((sum, r) => sum + (r.queue?.length || 0), 0),
+        messages: localRooms.reduce((sum, r) => sum + (r.messages?.length || 0), 0),
         history: history.length,
         friendships: 0,
         playlists: playlists.length,
-        totalRecords: users.length + localRooms.length + playlists.length + history.length + 5,
+        totalRecords: users.length + localRooms.length + playlists.length + history.length,
       },
       googleConfig: {
         clientId,
@@ -1026,12 +1082,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
       } as any;
     }
     if (type === 'ROOM') {
-      let rooms: JamRoom[] = [];
-      try {
-        rooms = JSON.parse(localStorage.getItem(LOCAL_ROOMS_KEY) || '[]');
-      } catch {
-        rooms = getInitialRooms();
-      }
+      const rooms = getCleanLocalRooms();
       return {
         records: rooms.map((r: any) => ({
           PK: `ROOM#${r.roomId}`,
@@ -1059,11 +1110,11 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     if (scope === 'history') {
       localStorage.removeItem(LOCAL_HISTORY_KEY);
     } else if (scope === 'rooms') {
-      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(getInitialRooms()));
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
     } else if (scope === 'all') {
       localStorage.removeItem(LOCAL_HISTORY_KEY);
       localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
-      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(getInitialRooms()));
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
     }
     return {
       success: true,
@@ -1112,7 +1163,7 @@ export async function apiRequest<T = any>(
 
     // If server returned 404 or backend unavailable, fall back seamlessly
     if (res.status === 404 || res.status === 502 || res.status === 503) {
-      return handleOfflineFallback<T>(endpoint, options);
+      return await handleOfflineFallback<T>(endpoint, options);
     }
 
     const data = await res.json().catch(() => ({}));
@@ -1125,7 +1176,7 @@ export async function apiRequest<T = any>(
       err.message?.includes('NetworkError') ||
       err.message?.includes('status 404')
     ) {
-      return handleOfflineFallback<T>(endpoint, options);
+      return await handleOfflineFallback<T>(endpoint, options);
     }
     throw err;
   }

@@ -645,17 +645,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
             </p>
 
             <div className="space-y-1 divide-y divide-slate-100 dark:divide-slate-800">
-              {(googleAccounts.length > 0
-                ? googleAccounts
-                : [
-                    {
-                      email: 'arshadsayed232@gmail.com',
-                      displayName: 'Arshad Sayed',
-                      avatarUrl:
-                        'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-                    },
-                  ]
-              ).map((acc, idx) => (
+              {googleAccounts.map((acc, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -666,7 +656,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
                   <img
                     src={
                       acc.avatarUrl ||
-                      'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c'
+                      `https://api.dicebear.com/7.x/bottts/svg?seed=${acc.email}`
                     }
                     alt={acc.displayName || acc.email}
                     className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
@@ -702,7 +692,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
                   type="text"
                   value={customGoogleName}
                   onChange={(e) => setCustomGoogleName(e.target.value)}
-                  placeholder="Full Name (e.g. Arshad Sayed)"
+                  placeholder="Full Name (e.g. John Doe)"
                   className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
                 />
                 <input

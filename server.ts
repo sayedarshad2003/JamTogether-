@@ -280,23 +280,6 @@ async function startServer() {
         .map((r) => r.data as UserProfile)
         .filter((u) => u && (u.authProvider === 'google' || u.email?.endsWith('@gmail.com')));
 
-      // Ensure Arshad Sayed is always present as the primary verified account
-      if (!googleUsers.some((u) => u.email === 'arshadsayed232@gmail.com')) {
-        googleUsers.unshift({
-          userId: 'usr_g_9efd41a9',
-          username: 'arshadsayed232',
-          email: 'arshadsayed232@gmail.com',
-          displayName: 'Arshad Sayed',
-          avatarUrl:
-            'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c',
-          bio: 'Music enthusiast jamming on JamTogether.',
-          favoriteGenres: ['Electronic', 'Indie', 'Pop'],
-          status: 'online',
-          authProvider: 'google',
-          createdAt: Date.now(),
-        });
-      }
-
       res.json({ accounts: googleUsers });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });

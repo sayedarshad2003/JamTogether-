@@ -30,24 +30,6 @@ interface YouTubeSearchModalProps {
   onQueueUserPlaylist?: (playlistId: string) => Promise<void>;
 }
 
-const PRESET_PLAYLISTS = [
-  {
-    name: 'Top Pop & Timeless Hits',
-    url: 'https://www.youtube.com/playlist?list=PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj',
-    tag: 'Pop / Trending',
-  },
-  {
-    name: 'Lofi Girl — Beats to Relax & Study To',
-    url: 'https://www.youtube.com/playlist?list=PLofht4PTcKYnaH8w5gkGPE8P2t88302ZX',
-    tag: 'Lo-Fi / Study',
-  },
-  {
-    name: 'Boiler Room & Club Highlights',
-    url: 'https://www.youtube.com/playlist?list=PLsPEq58sL5f_8u2g776wZ-u4h48-X6v7V',
-    tag: 'Electronic / Club',
-  },
-];
-
 export function YouTubeSearchModal({
   isOpen,
   onClose,
@@ -63,7 +45,7 @@ export function YouTubeSearchModal({
   // Dynamic Search state
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<YouTubeTrack[]>([]);
-  const [source, setSource] = useState<string>('curated-index');
+  const [source, setSource] = useState<string>('youtube-live');
   const [loading, setLoading] = useState(false);
   const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,9 +70,6 @@ export function YouTubeSearchModal({
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
-      if (results.length === 0) {
-        performSearch('');
-      }
       loadUserPlaylists();
     }
   }, [isOpen, initialTab]);
@@ -108,15 +87,20 @@ export function YouTubeSearchModal({
   };
 
   const performSearch = async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      setSource('youtube-live');
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiRequest<{ items: YouTubeTrack[]; source: string }>(
-        `/api/youtube/search?q=${encodeURIComponent(searchQuery)}`
+        `/api/youtube/search?q=${encodeURIComponent(searchQuery.trim())}`
       );
       setResults(res.items || []);
-      setSource(res.source);
+      setSource(res.source || 'youtube-live');
     } catch {
-      // ignore
+      setResults([]);
     } finally {
       setLoading(false);
     }
@@ -336,13 +320,9 @@ export function YouTubeSearchModal({
               </div>
               <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>
-                  {source === 'youtube-live' ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                      ✓ Live YouTube Data API v3 Search
-                    </span>
-                  ) : (
-                    <span>Curated Music Index</span>
-                  )}
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    ✓ Live YouTube Music Search
+                  </span>
                 </span>
                 <span>{results.length} songs found</span>
               </div>
@@ -354,7 +334,9 @@ export function YouTubeSearchModal({
                 <div className="py-12 text-center space-y-2">
                   <Music className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    No songs found for &ldquo;{query}&rdquo;. Try another title or artist.
+                    {query.trim()
+                      ? `No songs found for "${query}". Try another title or artist.`
+                      : 'Type any song name, artist, or paste a YouTube video URL above to search YouTube live.'}
                   </p>
                 </div>
               )}
@@ -457,23 +439,12 @@ export function YouTubeSearchModal({
                 </button>
               </div>
 
-              {/* Quick Pick Playlists */}
+              {/* How to import guide */}
               <div className="pt-2">
-                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">
-                  Or load one of these popular playlists:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_PLAYLISTS.map((p) => (
-                    <button
-                      key={p.name}
-                      type="button"
-                      disabled={loadingPlaylist}
-                      onClick={() => handleInspectPlaylist(p.url)}
-                      className="px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-[#181B28] hover:bg-violet-500/15 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80 transition-colors"
-                    >
-                      {p.name} ({p.tag})
-                    </button>
-                  ))}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#181B28]/60 border border-slate-200/80 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                  <p className="font-semibold text-slate-700 dark:text-slate-300">How to import any YouTube playlist:</p>
+                  <p>1. Copy any public playlist link from YouTube (e.g. <span className="font-mono text-violet-600 dark:text-violet-400">https://www.youtube.com/playlist?list=...</span>)</p>
+                  <p>2. Paste above and click <strong>Inspect Playlist</strong> to scan songs and add them directly to your session queue.</p>
                 </div>
               </div>
             </div>

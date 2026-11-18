@@ -9,31 +9,12 @@ interface CreateRoomModalProps {
   onCreated: (room: JamRoom) => void;
 }
 
-const STARTER_TRACKS = [
-  {
-    videoId: 'sCNlt5nvSI8',
-    label: 'FKJ & Masego — Tadow (Live Studio Session)',
-  },
-  {
-    videoId: 'qebVUb_cM_E',
-    label: 'Khruangbin — NPR Tiny Desk Concert',
-  },
-  {
-    videoId: 'jfKfPfyJRdk',
-    label: 'Lofi Girl — Beats to Relax / Study To',
-  },
-  {
-    videoId: '4xDzrJKXOOY',
-    label: 'Synthwave Radio — ChillSynth Retro Beats',
-  },
-];
-
 export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [genreTag, setGenreTag] = useState('Electronic / Indie');
   const [isPrivate, setIsPrivate] = useState(false);
-  const [initialVideoId, setInitialVideoId] = useState(STARTER_TRACKS[0].videoId);
+  const [initialSong, setInitialSong] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -51,11 +32,12 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
           description,
           genreTag,
           isPrivate,
-          initialVideoId,
+          initialSong: initialSong.trim(),
         }),
       });
       setName('');
       setDescription('');
+      setInitialSong('');
       onCreated(res.room);
       onClose();
     } catch (err) {
@@ -165,19 +147,18 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
 
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-              Opening Track
+              Opening Track (Optional)
             </label>
-            <select
-              value={initialVideoId}
-              onChange={(e) => setInitialVideoId(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              {STARTER_TRACKS.map((t) => (
-                <option key={t.videoId} value={t.videoId}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              value={initialSong}
+              onChange={(e) => setInitialSong(e.target.value)}
+              placeholder="Paste YouTube link / song name, or leave blank to choose inside room"
+              className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              Leave blank to start with a clean room and queue any song live inside.
+            </p>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">

@@ -150,7 +150,7 @@ export async function searchYouTubeVideos(query: string): Promise<{
 }> {
   const q = query.trim();
   if (!q) {
-    return { items: CURATED_YOUTUBE_TRACKS, source: 'curated-index' };
+    return { items: [], source: 'curated-index' };
   }
 
   // 1. Check if input is a direct YouTube video URL or 11-char Video ID
@@ -170,7 +170,7 @@ export async function searchYouTubeVideos(query: string): Promise<{
           durationFormatted: '04:00',
         };
         return {
-          items: [directTrack, ...CURATED_YOUTUBE_TRACKS.filter((t) => t.videoId !== extractedId)],
+          items: [directTrack],
           source: 'youtube-oembed',
         };
       }
@@ -185,7 +185,7 @@ export async function searchYouTubeVideos(query: string): Promise<{
       durationSec: 240,
       durationFormatted: '04:00',
     };
-    return { items: [fallbackDirect, ...CURATED_YOUTUBE_TRACKS], source: 'youtube-oembed' };
+    return { items: [fallbackDirect], source: 'youtube-oembed' };
   }
 
   // 2. Official YouTube Data API v3 call when configured
@@ -306,7 +306,7 @@ export async function searchYouTubeVideos(query: string): Promise<{
   );
 
   return {
-    items: matched.length > 0 ? matched : CURATED_YOUTUBE_TRACKS,
+    items: matched,
     source: 'curated-index',
   };
 }
@@ -466,11 +466,11 @@ export async function fetchYouTubePlaylist(playlistUrlOrId: string): Promise<{
     console.warn('Failed to parse YouTube playlist live:', err);
   }
 
-  // 3. Fallback curated playlist
+  // 3. Fallback empty playlist
   return {
     playlistId: listId,
-    title: 'Curated JamTogether Playlist Pack',
-    tracks: CURATED_YOUTUBE_TRACKS,
-    source: 'curated-playlist',
+    title: 'YouTube Playlist',
+    tracks: [],
+    source: 'youtube-live-playlist',
   };
 }

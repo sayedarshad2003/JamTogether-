@@ -232,8 +232,8 @@
     <!-- Use another account form -->
     <div id="customAccountForm" class="custom-account-form">
       <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #202124;">Sign in with Google Account</div>
-      <input type="text" id="customName" class="input-field" placeholder="Full Name (e.g. Arshad Sayed)">
-      <input type="email" id="customEmail" class="input-field" placeholder="Email (e.g. arshadsayed232@gmail.com)" required>
+      <input type="text" id="customName" class="input-field" placeholder="Full Name (e.g. John Doe)">
+      <input type="email" id="customEmail" class="input-field" placeholder="Email (e.g. name@gmail.com)" required>
       <button type="button" id="btnCustomSubmit" class="btn-submit">Continue</button>
     </div>
 
@@ -283,14 +283,7 @@
 
       const listEl = document.getElementById('accountList');
       
-      // Default account: Arshad Sayed
-      let accounts = [
-        {
-          email: 'arshadsayed232@gmail.com',
-          displayName: 'Arshad Sayed',
-          avatarUrl: 'https://lh3.googleusercontent.com/a/ACg8ocJz0XGqRTrauOla5QWasniWB6ZpKvXLw9SJwdR9IoLMXxK2P03yCw=s96-c'
-        }
-      ];
+      let accounts = [];
 
       // Fetch saved accounts from JamTogether server
       try {
@@ -302,7 +295,7 @@
           }
         }
       } catch (err) {
-        console.warn('Could not fetch server accounts, using defaults:', err);
+        console.warn('Could not fetch server accounts:', err);
       }
 
       // Merge with accounts saved locally in browser
@@ -317,6 +310,11 @@
         }
       } catch (err) {
         console.warn('Could not load local accounts:', err);
+      }
+
+      // If no account is logged in yet, show input form directly
+      if (accounts.length === 0) {
+        document.getElementById('customAccountForm').classList.add('active');
       }
 
       // Render accounts

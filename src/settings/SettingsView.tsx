@@ -395,11 +395,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
           <button
             type="button"
             onClick={() => setActiveTab('general')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-              activeTab === 'general'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
-            }`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${activeTab === 'general'
+              ? 'bg-violet-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+              }`}
           >
             <Sliders className="w-4 h-4 shrink-0" />
             <span>Theme & Playback</span>
@@ -408,11 +407,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
           <button
             type="button"
             onClick={() => setActiveTab('account')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-              activeTab === 'account'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
-            }`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${activeTab === 'account'
+              ? 'bg-violet-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+              }`}
           >
             <User className="w-4 h-4 shrink-0" />
             <span>Profile & Account</span>
@@ -421,11 +419,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
           <button
             type="button"
             onClick={() => setActiveTab('privacy')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-              activeTab === 'privacy'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
-            }`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${activeTab === 'privacy'
+              ? 'bg-violet-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+              }`}
           >
             <Trash2 className="w-4 h-4 shrink-0" />
             <span>Data Privacy & Delete</span>
@@ -435,11 +432,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
             <button
               type="button"
               onClick={() => setActiveTab('admin')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                activeTab === 'admin'
-                  ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
-                  : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-              }`}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${activeTab === 'admin'
+                ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
+                : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <Shield className="w-4 h-4 shrink-0" />
@@ -476,11 +472,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                     onClick={() => {
                       if (theme !== 'dark') toggleTheme();
                     }}
-                    className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${
-                      theme === 'dark'
-                        ? 'bg-[#181B28] border-violet-500 shadow-sm text-white'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                    className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${theme === 'dark'
+                      ? 'bg-[#181B28] border-violet-500 shadow-sm text-white'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
                   >
                     <div className="w-10 h-10 rounded-lg bg-violet-600/20 text-violet-400 flex items-center justify-center shrink-0">
                       <Moon className="w-5 h-5" />
@@ -496,11 +491,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                     onClick={() => {
                       if (theme !== 'light') toggleTheme();
                     }}
-                    className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${
-                      theme === 'light'
-                        ? 'bg-violet-50 border-violet-500 shadow-sm text-slate-900'
-                        : 'bg-slate-50 dark:bg-[#181B28] border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                    }`}
+                    className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${theme === 'light'
+                      ? 'bg-violet-50 border-violet-500 shadow-sm text-slate-900'
+                      : 'bg-slate-50 dark:bg-[#181B28] border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                      }`}
                   >
                     <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
                       <Sun className="w-5 h-5" />
@@ -1201,11 +1195,10 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                         type="button"
                         disabled={wipingData || wipeConfirmInput.trim() !== 'DELETE'}
                         onClick={handleWipeData}
-                        className={`px-5 py-2 text-xs font-bold rounded-xl text-white transition-all shadow-md ${
-                          wipeConfirmInput.trim() === 'DELETE'
-                            ? 'bg-red-600 hover:bg-red-500 cursor-pointer shadow-red-600/30'
-                            : 'bg-slate-400 dark:bg-slate-700 opacity-50 cursor-not-allowed'
-                        }`}
+                        className={`px-5 py-2 text-xs font-bold rounded-xl text-white transition-all shadow-md ${wipeConfirmInput.trim() === 'DELETE'
+                          ? 'bg-red-600 hover:bg-red-500 cursor-pointer shadow-red-600/30'
+                          : 'bg-slate-400 dark:bg-slate-700 opacity-50 cursor-not-allowed'
+                          }`}
                       >
                         {wipingData ? 'Processing Wipe...' : 'Execute Data Wipe'}
                       </button>
