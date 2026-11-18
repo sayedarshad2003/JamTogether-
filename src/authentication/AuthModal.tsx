@@ -195,7 +195,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
 
     try {
       const popup = window.open(
-        '/google-auth-popup',
+        '/google-auth-popup.html',
         'GoogleSignInPopup',
         `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no,location=no`
       );

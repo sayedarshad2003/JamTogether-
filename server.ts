@@ -263,7 +263,7 @@ async function startServer() {
   });
 
   // Google OAuth Popup Route
-  app.get('/google-auth-popup', (_req: Request, res: Response) => {
+  app.get(['/google-auth-popup', '/google-auth-popup.html'], (_req: Request, res: Response) => {
     const popupPath = path.join(process.cwd(), 'public', 'google-auth-popup.html');
     if (fs.existsSync(popupPath)) {
       res.sendFile(popupPath);
