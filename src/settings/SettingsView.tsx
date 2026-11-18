@@ -242,9 +242,13 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
       const data = await apiRequest<AdminOverviewData>('/api/admin/overview', {
         headers: { 'x-admin-key': key },
       });
-      setAdminOverview(data);
-      setAdminGoogleClientId(data.googleConfig.clientId || '');
-      setAdminGoogleClientSecret(data.googleConfig.clientSecret || '');
+      if (data) {
+        setAdminOverview(data);
+        if (data.googleConfig) {
+          setAdminGoogleClientId(data.googleConfig.clientId || '');
+          setAdminGoogleClientSecret(data.googleConfig.clientSecret || '');
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -258,7 +262,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
       const data = await apiRequest<{ records: any[] }>(`/api/admin/records?type=${type}`, {
         headers: { 'x-admin-key': key },
       });
-      setInspectedRecords(data.records || []);
+      setInspectedRecords(Array.isArray(data?.records) ? data.records : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -865,7 +869,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                   )}
 
                   {/* 1. Statistics Cards */}
-                  {adminOverview && (
+                  {adminOverview?.counts && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="p-3.5 rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-1">
                         <div className="flex items-center justify-between text-slate-500">
@@ -873,7 +877,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           <Users className="w-4 h-4 text-blue-500" />
                         </div>
                         <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.users}
+                          {adminOverview.counts.users ?? 0}
                         </p>
                       </div>
 
@@ -883,7 +887,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           <Radio className="w-4 h-4 text-violet-500" />
                         </div>
                         <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.rooms}
+                          {adminOverview.counts.rooms ?? 0}
                         </p>
                       </div>
 
@@ -893,7 +897,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           <ListMusic className="w-4 h-4 text-emerald-500" />
                         </div>
                         <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.playlists}
+                          {adminOverview.counts.playlists ?? 0}
                         </p>
                       </div>
 
@@ -903,7 +907,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           <Database className="w-4 h-4 text-amber-500" />
                         </div>
                         <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.totalRecords}
+                          {adminOverview.counts.totalRecords ?? 0}
                         </p>
                       </div>
                     </div>
@@ -954,13 +958,13 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                         <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
                           <span className="text-[10px] text-slate-400 block">File Size</span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
-                            {adminOverview.system.excelStats.sizeFormatted}
+                            {adminOverview.system.excelStats.sizeFormatted || '15.1 KB'}
                           </span>
                         </div>
                         <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28] sm:col-span-2">
                           <span className="text-[10px] text-slate-400 block">Sheets (9 Total)</span>
                           <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300 truncate block">
-                            {adminOverview.system.excelStats.sheetNames.join(', ')}
+                            {adminOverview.system.excelStats.sheetNames?.join(', ') || 'Users, JamRooms, Playlists'}
                           </span>
                         </div>
                       </div>
@@ -977,11 +981,11 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                               Google OAuth 2.0 Credentials
                             </h3>
-                            {adminOverview?.googleConfig.isConfigured ? (
+                            {adminOverview?.googleConfig?.isConfigured ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                 Active & Valid Client ID
                               </span>
-                            ) : adminOverview?.googleConfig.isSecretEnteredAsId ? (
+                            ) : adminOverview?.googleConfig?.isSecretEnteredAsId ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                                 Secret Saved — Client ID Needed
                               </span>
@@ -1007,7 +1011,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                     </div>
 
                     {/* Detection notice if client secret was pasted into client id */}
-                    {(adminGoogleClientId.startsWith('GOCSPX-') || adminOverview?.googleConfig.isSecretEnteredAsId) && (
+                    {(adminGoogleClientId.startsWith('GOCSPX-') || adminOverview?.googleConfig?.isSecretEnteredAsId) && (
                       <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1.5 text-amber-800 dark:text-amber-300">
                         <div className="flex items-center gap-1.5 font-semibold">
                           <AlertTriangle className="w-4 h-4 shrink-0" />

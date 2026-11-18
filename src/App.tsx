@@ -21,6 +21,74 @@ import {
   UserPlaylist,
 } from './types/jam.ts';
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App ErrorBoundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4 text-2xl font-bold">
+              !
+            </div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+              Unable to load this section
+            </h2>
+            <p className="text-xs text-slate-500 max-w-md mb-4 font-mono">
+              {this.state.error?.message || 'An unexpected rendering error occurred.'}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  this.setState({ hasError: false });
+                  window.location.reload();
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-violet-600 text-white hover:bg-violet-500 transition-colors shadow-sm"
+              >
+                Reload
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  this.setState({ hasError: false });
+                  window.location.href = '/';
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function JamTogetherShell() {
   const { theme, toggleTheme } = useTheme();
   const { user, loading: authLoading } = useAuth();
@@ -248,10 +316,12 @@ function JamTogetherShell() {
             onLeaveRoom={leaveRoom}
           />
         ) : currentPage === 'settings' ? (
-          <SettingsView
-            onBackToDashboard={navigateToDashboard}
-            onRefreshDashboard={loadDashboard}
-          />
+          <ErrorBoundary>
+            <SettingsView
+              onBackToDashboard={navigateToDashboard}
+              onRefreshDashboard={loadDashboard}
+            />
+          </ErrorBoundary>
         ) : (
           <DashboardView
             user={user}
