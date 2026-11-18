@@ -254,6 +254,33 @@
 
   <script>
     async function init() {
+      // Check if redirected from Google OAuth with an access token in the URL hash
+      if (window.location.hash && window.location.hash.includes('access_token=')) {
+        document.getElementById('loadingOverlay').classList.add('active');
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        if (accessToken) {
+          try {
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              selectAccount({
+                email: data.email,
+                name: data.name,
+                displayName: data.name,
+                picture: data.picture,
+                avatarUrl: data.picture
+              });
+              return;
+            }
+          } catch (e) {
+            console.error('Failed to fetch Google profile from token:', e);
+          }
+        }
+      }
+
       const listEl = document.getElementById('accountList');
       
       // Default account: Arshad Sayed

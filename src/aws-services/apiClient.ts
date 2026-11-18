@@ -337,9 +337,18 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
 
   // 6. Google Config & Accounts
   if (endpoint.startsWith('/api/auth/google/config')) {
+    const storedClientId =
+      localStorage.getItem('jamtogether_admin_google_client_id') ||
+      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
+      '';
+    const isValid = Boolean(
+      storedClientId &&
+      storedClientId.includes('.apps.googleusercontent.com') &&
+      !storedClientId.startsWith('GOCSPX-')
+    );
     return {
-      clientId: (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '',
-      isConfigured: false,
+      clientId: storedClientId,
+      isConfigured: isValid,
     } as any;
   }
   if (endpoint === '/api/auth/google/accounts') {
@@ -486,11 +495,14 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     }
   }
 
-  // 9. Single Room & Playback (/api/rooms/:roomId)
-  const roomMatch = endpoint.match(/^\/api\/rooms\/([^/]+)(\/(playback|queue|chat))?$/);
-  if (roomMatch) {
-    const targetRoomId = roomMatch[1];
-    const subAction = roomMatch[3];
+  // 9. Single Room & Sub-actions (/api/rooms/:roomId/...)
+  if (endpoint.startsWith('/api/rooms/')) {
+    const rawPath = endpoint.split('?')[0];
+    const parts = rawPath.replace(/^\/api\/rooms\/?/, '').split('/');
+    const targetRoomId = parts[0];
+    const subResource = parts[1]; // 'playback', 'queue', 'messages', 'chat', 'transfer-host', 'kick', 'members'
+    const subId = parts[2]; // queue itemId, or 'reorder', 'playlist', 'user-playlist', messageId
+    const subSub = parts[3]; // 'react' or playlistId
 
     let localRooms: JamRoom[] = [];
     try {
@@ -498,47 +510,211 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
     } catch {
       localRooms = getInitialRooms();
     }
-    const room = localRooms.find((r) => r.roomId === targetRoomId) || getInitialRooms()[0];
+    let room = localRooms.find((r) => r.roomId === targetRoomId);
+    if (!room) {
+      room = {
+        roomId: targetRoomId,
+        roomCode: targetRoomId.slice(-4).toUpperCase(),
+        name: 'Jam Lounge',
+        description: 'Synchronized listening space',
+        genreTag: 'Electronic / Indie',
+        isPrivate: false,
+        hostUserId: 'host',
+        hostUsername: 'host',
+        hostAvatarUrl: '',
+        activeMemberCount: 1,
+        createdAt: Date.now(),
+        playback: {
+          roomId: targetRoomId,
+          videoId: STARTER_TRACKS[0].videoId,
+          track: STARTER_TRACKS[0],
+          status: 'playing',
+          positionSec: 0,
+          serverTimestamp: Date.now(),
+          initiatedByUserId: 'host',
+          initiatedByUsername: 'host',
+          historyIndex: 0,
+        },
+        queue: [
+          {
+            itemId: 'q_' + Date.now(),
+            roomId: targetRoomId,
+            orderIndex: 0,
+            track: STARTER_TRACKS[0],
+            addedByUserId: 'host',
+            addedByUsername: 'host',
+            addedByAvatar: '',
+            addedAt: Date.now(),
+            upvotes: [],
+          },
+        ],
+        members: [],
+        messages: [],
+      };
+      localRooms.push(room);
+    }
     if (!room.queue) room.queue = [];
     if (!room.messages) room.messages = [];
     if (!room.members) room.members = [];
 
-    if (!subAction) {
+    // GET /api/rooms/:roomId
+    if (!subResource) {
       return { room } as any;
     }
 
-    if (subAction === 'playback' && method === 'POST') {
-      if (body.action === 'selectTrack' && body.track) {
-        room.playback.videoId = body.track.videoId;
-        room.playback.track = body.track;
-        room.playback.status = 'playing';
-        room.playback.positionSec = 0;
-        room.playback.serverTimestamp = Date.now();
-      } else if (body.action === 'play') {
-        room.playback.status = 'playing';
-        room.playback.serverTimestamp = Date.now();
-      } else if (body.action === 'pause') {
-        room.playback.status = 'paused';
-        if (typeof body.positionSec === 'number') room.playback.positionSec = body.positionSec;
-        room.playback.serverTimestamp = Date.now();
-      } else if (body.action === 'seek') {
-        if (typeof body.positionSec === 'number') room.playback.positionSec = body.positionSec;
-        room.playback.serverTimestamp = Date.now();
+    // Playback (/api/rooms/:roomId/playback)
+    if (subResource === 'playback') {
+      if (method === 'POST') {
+        if (body.action === 'selectTrack' && body.track) {
+          room.playback.videoId = body.track.videoId;
+          room.playback.track = body.track;
+          room.playback.status = 'playing';
+          room.playback.positionSec = 0;
+          room.playback.serverTimestamp = Date.now();
+        } else if (body.action === 'play') {
+          room.playback.status = 'playing';
+          room.playback.serverTimestamp = Date.now();
+        } else if (body.action === 'pause') {
+          room.playback.status = 'paused';
+          if (typeof body.positionSec === 'number') room.playback.positionSec = body.positionSec;
+          room.playback.serverTimestamp = Date.now();
+        } else if (body.action === 'seek') {
+          if (typeof body.positionSec === 'number') room.playback.positionSec = body.positionSec;
+          room.playback.serverTimestamp = Date.now();
+        } else if (body.action === 'next') {
+          const currentIndex = room.queue.findIndex((q) => q.track.videoId === room.playback.videoId);
+          const nextItem = room.queue[currentIndex + 1] || room.queue[0];
+          if (nextItem) {
+            room.playback.videoId = nextItem.track.videoId;
+            room.playback.track = nextItem.track;
+            room.playback.status = 'playing';
+            room.playback.positionSec = 0;
+            room.playback.serverTimestamp = Date.now();
+          }
+        } else if (body.action === 'previous') {
+          const currentIndex = room.queue.findIndex((q) => q.track.videoId === room.playback.videoId);
+          const prevItem = currentIndex > 0 ? room.queue[currentIndex - 1] : room.queue[room.queue.length - 1];
+          if (prevItem) {
+            room.playback.videoId = prevItem.track.videoId;
+            room.playback.track = prevItem.track;
+            room.playback.status = 'playing';
+            room.playback.positionSec = 0;
+            room.playback.serverTimestamp = Date.now();
+          }
+        }
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        return { playback: room.playback } as any;
       }
-      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
       return { playback: room.playback } as any;
     }
 
-    if (subAction === 'queue') {
+    // Queue (/api/rooms/:roomId/queue, /api/rooms/:roomId/queue/:itemId, /api/rooms/:roomId/queue/playlist, /api/rooms/:roomId/queue/user-playlist/:id, /api/rooms/:roomId/queue/reorder)
+    if (subResource === 'queue') {
+      if (subId === 'playlist' && method === 'POST') {
+        const tracksToAdd = Array.isArray(body.tracks) && body.tracks.length > 0 ? body.tracks : STARTER_TRACKS;
+        let currentUser: UserProfile | null = null;
+        try {
+          currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+        } catch {}
+        if (!room.queue) room.queue = [];
+        const currentLen = room.queue.length;
+        const addedItems = tracksToAdd.map((tr: YouTubeTrack, idx: number) => ({
+          itemId: 'q_' + Date.now() + '_' + idx,
+          roomId: targetRoomId,
+          orderIndex: currentLen + idx,
+          track: tr,
+          addedByUserId: currentUser?.userId || 'user',
+          addedByUsername: currentUser?.username || 'user',
+          addedByAvatar: currentUser?.avatarUrl || '',
+          addedAt: Date.now(),
+          upvotes: [],
+        }));
+        room.queue.push(...addedItems);
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        return {
+          queue: room.queue,
+          addedCount: addedItems.length,
+          playlistTitle: body.playlistName || 'Imported Playlist',
+        } as any;
+      }
+
+      if (subId === 'user-playlist' && method === 'POST') {
+        const playlistId = subSub;
+        let playlists: UserPlaylist[] = [];
+        try {
+          playlists = JSON.parse(localStorage.getItem(LOCAL_PLAYLISTS_KEY) || '[]');
+        } catch {
+          playlists = [];
+        }
+        const pl = playlists.find((p) => p.playlistId === playlistId);
+        const tracksToAdd = pl && Array.isArray(pl.tracks) && pl.tracks.length > 0 ? pl.tracks : STARTER_TRACKS;
+        let currentUser: UserProfile | null = null;
+        try {
+          currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+        } catch {}
+        if (!room.queue) room.queue = [];
+        const currentLen = room.queue.length;
+        const addedItems = tracksToAdd.map((tr: YouTubeTrack, idx: number) => ({
+          itemId: 'q_' + Date.now() + '_' + idx,
+          roomId: targetRoomId,
+          orderIndex: currentLen + idx,
+          track: tr,
+          addedByUserId: currentUser?.userId || 'user',
+          addedByUsername: currentUser?.username || 'user',
+          addedByAvatar: currentUser?.avatarUrl || '',
+          addedAt: Date.now(),
+          upvotes: [],
+        }));
+        room.queue.push(...addedItems);
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        return {
+          queue: room.queue,
+          addedCount: addedItems.length,
+          playlistName: pl?.name || 'User Playlist',
+        } as any;
+      }
+
+      if (subId === 'reorder' && method === 'PUT') {
+        const { itemId, direction } = body;
+        const idx = room.queue.findIndex((q) => q.itemId === itemId);
+        if (idx !== -1) {
+          const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+          if (swapIdx >= 0 && swapIdx < room.queue.length) {
+            const temp = room.queue[idx];
+            room.queue[idx] = room.queue[swapIdx];
+            room.queue[swapIdx] = temp;
+            room.queue.forEach((item, index) => {
+              item.orderIndex = index;
+            });
+            localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+          }
+        }
+        return { queue: room.queue } as any;
+      }
+
+      if (subId && method === 'DELETE') {
+        // subId is itemId
+        room.queue = room.queue.filter((item) => item.itemId !== subId);
+        room.queue.forEach((item, index) => {
+          item.orderIndex = index;
+        });
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        return { queue: room.queue } as any;
+      }
+
       if (method === 'POST') {
+        let currentUser: UserProfile | null = null;
+        try {
+          currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+        } catch {}
         const item = {
           itemId: 'q_' + Date.now(),
           roomId: targetRoomId,
           orderIndex: room.queue.length,
           track: body.track || STARTER_TRACKS[0],
-          addedByUserId: body.userId || 'user',
-          addedByUsername: body.username || 'user',
-          addedByAvatar: body.avatarUrl || '',
+          addedByUserId: body.userId || currentUser?.userId || 'user',
+          addedByUsername: body.username || currentUser?.username || 'user',
+          addedByAvatar: body.avatarUrl || currentUser?.avatarUrl || '',
           addedAt: Date.now(),
           upvotes: [],
         };
@@ -546,19 +722,47 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return { queue: room.queue } as any;
       }
+
       return { queue: room.queue } as any;
     }
 
-    if (subAction === 'chat') {
+    // Chat / Messages (/api/rooms/:roomId/messages, /api/rooms/:roomId/chat)
+    if (subResource === 'messages' || subResource === 'chat') {
+      if (subId && subSub === 'react' && method === 'POST') {
+        const msg = room.messages.find((m) => m.messageId === subId);
+        if (msg) {
+          if (!msg.reactions) msg.reactions = {};
+          let currentUser: UserProfile | null = null;
+          try {
+            currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+          } catch {}
+          const uId = currentUser?.userId || 'user';
+          const emoji = body.emoji || '❤️';
+          const list = msg.reactions[emoji] || [];
+          if (list.includes(uId)) {
+            msg.reactions[emoji] = list.filter((id) => id !== uId);
+          } else {
+            msg.reactions[emoji] = [...list, uId];
+          }
+          localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+          return { message: msg } as any;
+        }
+        return { message: room.messages[0] || {} } as any;
+      }
+
       if (method === 'POST') {
+        let currentUser: UserProfile | null = null;
+        try {
+          currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+        } catch {}
         const msg: ChatMessage = {
-          messageId: 'msg_' + Date.now(),
+          messageId: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
           roomId: targetRoomId,
-          userId: body.userId || 'user',
-          username: body.username || 'user',
-          displayName: body.displayName || body.username || 'User',
-          avatarUrl: body.avatarUrl || '',
-          content: body.text || body.content || '',
+          userId: body.userId || currentUser?.userId || 'user',
+          username: body.username || currentUser?.username || 'user',
+          displayName: body.displayName || currentUser?.displayName || currentUser?.username || 'User',
+          avatarUrl: body.avatarUrl || currentUser?.avatarUrl || '',
+          content: body.content || body.text || '',
           type: 'text',
           timestamp: Date.now(),
           reactions: {},
@@ -569,9 +773,53 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
       }
       return { messages: room.messages } as any;
     }
+
+    // Host transfer (/api/rooms/:roomId/transfer-host)
+    if (subResource === 'transfer-host' && method === 'POST') {
+      room.hostUserId = body.newHostUserId;
+      room.members.forEach((m) => {
+        m.role = m.userId === body.newHostUserId ? 'host' : 'member';
+      });
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      return { room } as any;
+    }
+
+    // Kick member (/api/rooms/:roomId/kick)
+    if (subResource === 'kick' && method === 'POST') {
+      room.members = room.members.filter((m) => m.userId !== body.targetUserId);
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      return { room, members: room.members } as any;
+    }
+
+    // Members list (/api/rooms/:roomId/members)
+    if (subResource === 'members') {
+      return { members: room.members } as any;
+    }
   }
 
-  // 10. YouTube Search
+  // 10. YouTube Search & Playlist
+  if (endpoint.startsWith('/api/youtube/playlist')) {
+    const url = new URL(endpoint, 'http://localhost');
+    const plUrl = url.searchParams.get('url') || url.searchParams.get('playlistId') || '';
+    const cleanId = plUrl.replace(/.*list=([^&]+).*/, '$1') || 'PL_DEFAULT';
+    let title = 'Imported YouTube Playlist';
+    if (plUrl.includes('PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj')) {
+      title = 'Top Pop & Timeless Hits';
+    } else if (plUrl.includes('PLofht4PTcKYnaH8w5gkGPE8P2t88302ZX')) {
+      title = 'Lofi Girl — Beats to Relax & Study To';
+    } else if (plUrl.includes('PLsPEq58sL5f_8u2g776wZ-u4h48-X6v7V')) {
+      title = 'Boiler Room & Club Highlights';
+    } else {
+      title = `Playlist (${cleanId.slice(0, 10)})`;
+    }
+
+    return {
+      title,
+      playlistId: cleanId,
+      tracks: STARTER_TRACKS,
+    } as any;
+  }
+
   if (endpoint.startsWith('/api/youtube/search')) {
     const url = new URL(endpoint, 'http://localhost');
     const q = (url.searchParams.get('q') || '').toLowerCase().trim();

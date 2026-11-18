@@ -74,10 +74,11 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
 
   // Google OAuth configuration state
   const [googleClientId, setGoogleClientId] = useState<string>(() => {
-    return (
-      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-      ''
-    );
+    try {
+      const stored = localStorage.getItem('jamtogether_admin_google_client_id');
+      if (stored && stored.trim()) return stored.trim();
+    } catch {}
+    return ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '').trim();
   });
   const [googleAccounts, setGoogleAccounts] = useState<any[]>([]);
   const [showGoogleOverlay, setShowGoogleOverlay] = useState(false);
@@ -213,52 +214,74 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
   const handleOpenGooglePopup = () => {
     setError(null);
 
+    const activeClientId = (
+      googleClientId ||
+      localStorage.getItem('jamtogether_admin_google_client_id') ||
+      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
+      ''
+    ).trim();
+
     // If a valid Google Client ID ending with .apps.googleusercontent.com is configured, use live Google Identity Services!
     const isValidClientId =
-      googleClientId &&
-      googleClientId.includes('.apps.googleusercontent.com') &&
-      !googleClientId.startsWith('GOCSPX-') &&
-      !googleClientId.startsWith('60CSPX-');
+      Boolean(activeClientId) &&
+      activeClientId.includes('.apps.googleusercontent.com') &&
+      !activeClientId.startsWith('GOCSPX-') &&
+      !activeClientId.startsWith('60CSPX-');
 
-    if (isValidClientId && window.google?.accounts?.oauth2) {
-      try {
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: googleClientId.trim(),
-          scope: 'email profile openid',
-          callback: async (tokenResponse) => {
-            if (tokenResponse?.access_token) {
-              setSubmitting(true);
-              try {
-                // Fetch actual Google profile details from Google userinfo API
-                const gRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                });
-                if (gRes.ok) {
-                  const gProfile = await gRes.json();
-                  await handleSelectGoogleAccount({
-                    email: gProfile.email,
-                    displayName: gProfile.name,
-                    avatarUrl: gProfile.picture,
+    if (isValidClientId) {
+      if (window.google?.accounts?.oauth2) {
+        try {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: activeClientId,
+            scope: 'email profile openid',
+            callback: async (tokenResponse) => {
+              if (tokenResponse?.access_token) {
+                setSubmitting(true);
+                try {
+                  const gRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
                   });
-                  return;
+                  if (gRes.ok) {
+                    const gProfile = await gRes.json();
+                    await handleSelectGoogleAccount({
+                      email: gProfile.email,
+                      displayName: gProfile.name,
+                      avatarUrl: gProfile.picture,
+                    });
+                    return;
+                  }
+                } catch (fetchErr) {
+                  console.warn('Error fetching Google userinfo:', fetchErr);
+                } finally {
+                  setSubmitting(false);
                 }
-              } catch (fetchErr) {
-                console.warn('Error fetching Google userinfo:', fetchErr);
-              } finally {
-                setSubmitting(false);
               }
-            }
-            if (tokenResponse?.error) {
-              console.warn('Google OAuth token error, falling back:', tokenResponse.error);
-              openChooserPopup();
-            }
-          },
-        });
-        // Prompt 'select_account' forces Google to show all Google accounts logged into the browser
-        client.requestAccessToken({ prompt: 'select_account' });
+              if (tokenResponse?.error) {
+                console.warn('Google OAuth token error, falling back:', tokenResponse.error);
+                openChooserPopup();
+              }
+            },
+          });
+          // Prompt 'select_account' forces Google to show all Google accounts logged into the browser
+          client.requestAccessToken({ prompt: 'select_account' });
+          return;
+        } catch (err) {
+          console.warn('Google GIS token client failed, launching direct OAuth popup:', err);
+        }
+      }
+
+      // If GIS script hasn't initialized or blocked, launch direct Google OAuth 2.0 popup
+      try {
+        const width = 500;
+        const height = 640;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const redirectUri = window.location.origin + '/google-auth-popup.html';
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(activeClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent('openid profile email')}&prompt=select_account`;
+        window.open(authUrl, 'GoogleSignInPopup', `width=${width},height=${height},left=${left},top=${top}`);
         return;
       } catch (err) {
-        console.warn('Google GIS token client failed, falling back:', err);
+        console.warn('Direct OAuth popup blocked, showing chooser popup:', err);
       }
     }
 

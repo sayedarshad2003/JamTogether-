@@ -21,6 +21,7 @@ import {
   YouTubeTrack,
 } from '../types/jam.ts';
 import { apiRequest } from '../aws-services/apiClient.ts';
+import { RoomRealtimeClient, RealtimeMessage } from '../realtime/roomSync.ts';
 import { YouTubePlayer } from '../youtube/YouTubePlayer.tsx';
 import { YouTubeSearchModal } from '../youtube/YouTubeSearchModal.tsx';
 import { useWebRTCVoice } from '../voice-chat/useWebRTCVoice.ts';
@@ -42,25 +43,29 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const [playback, setPlayback] = useState<PlaybackState | null>(null);
 
   const [wsConnected, setWsConnected] = useState(false);
+  const [syncMode, setSyncMode] = useState<'backend' | 'cloud-relay' | 'disconnected'>('disconnected');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTab, setSearchTab] = useState<'search' | 'playlist' | 'my-playlists'>('search');
   const [toastError, setToastError] = useState<string | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
+  const realtimeClientRef = useRef<RoomRealtimeClient | null>(null);
+  const currentPlaybackRef = useRef<PlaybackState | null>(null);
+  currentPlaybackRef.current = playback;
+  const currentQueueRef = useRef<QueueItem[]>([]);
+  currentQueueRef.current = queue;
+  const currentMembersRef = useRef<RoomMember[]>([]);
+  currentMembersRef.current = members;
 
   const sendWsMessage = useCallback(
     (type: string, payload: any = {}) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type,
-            roomId,
-            payload,
-          })
-        );
+      if (realtimeClientRef.current) {
+        realtimeClientRef.current.send({
+          type,
+          roomId,
+          payload,
+        });
       }
     },
     [roomId]
@@ -94,11 +99,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const fetchRoomState = useCallback(async () => {
     try {
       const res = await apiRequest<{ room: JamRoom }>(`/api/rooms/${roomId}`);
-      setRoom(res.room);
-      setMembers(res.room.members || []);
-      setQueue(res.room.queue || []);
-      setMessages(res.room.messages || []);
-      setPlayback(res.room.playback);
+      if (res?.room) {
+        setRoom(res.room);
+        setMembers(Array.isArray(res.room.members) ? res.room.members : []);
+        setQueue(Array.isArray(res.room.queue) ? res.room.queue : []);
+        setMessages(Array.isArray(res.room.messages) ? res.room.messages : []);
+        if (res.room.playback) setPlayback(res.room.playback);
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -108,173 +115,222 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     fetchRoomState();
   }, [fetchRoomState]);
 
-  // Connect to Real-Time WebSocket Server with automatic reconnection & state recovery
+  // Connect to Real-Time Room Sync Layer (Direct WS locally, MQTT WebSocket Cloud Relay on Amplify)
   useEffect(() => {
     if (!currentUser) return;
     const activeUser = currentUser;
     let isUnmounted = false;
 
-    function connectWs() {
-      if (isUnmounted) return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      const socket = new WebSocket(wsUrl);
-      wsRef.current = socket;
-
-      socket.onopen = () => {
+    const client = new RoomRealtimeClient(
+      roomId,
+      activeUser,
+      (msg: RealtimeMessage) => {
         if (isUnmounted) return;
-        setWsConnected(true);
-        socket.send(
-          JSON.stringify({
-            type: 'room:subscribe',
-            roomId,
-            payload: {
-              userId: activeUser.userId,
-              username: activeUser.username,
-              displayName: activeUser.displayName,
-              avatarUrl: activeUser.avatarUrl,
-            },
-          })
-        );
-      };
+        if (msg.roomId && msg.roomId !== roomId) return;
 
-      socket.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.roomId && msg.roomId !== roomId) return;
-
-          switch (msg.type) {
-            case 'room:init': {
-              const r = msg.payload?.room as JamRoom;
-              if (r) {
-                setRoom(r);
-                setMembers(r.members || []);
-                setQueue(r.queue || []);
-                setMessages(r.messages || []);
-                setPlayback(r.playback);
-              }
-              break;
+        switch (msg.type) {
+          case 'room:init': {
+            const r = msg.payload?.room as JamRoom;
+            if (r) {
+              setRoom(r);
+              setMembers(Array.isArray(r.members) ? r.members : []);
+              setQueue(Array.isArray(r.queue) ? r.queue : []);
+              setMessages(Array.isArray(r.messages) ? r.messages : []);
+              if (r.playback) setPlayback(r.playback);
             }
-            case 'room:members_updated': {
-              if (Array.isArray(msg.payload?.members)) {
-                setMembers(msg.payload.members);
-              }
-              break;
+            break;
+          }
+          case 'room:peer_joined': {
+            const joiningMember = msg.payload?.member as RoomMember;
+            if (joiningMember && joiningMember.userId !== activeUser.userId) {
+              setMembers((prev) => {
+                const exists = prev.some((m) => m.userId === joiningMember.userId);
+                const nextMembers = exists ? prev : [...prev, joiningMember];
+                // Broadcast current room state back to joining peer
+                realtimeClientRef.current?.send({
+                  type: 'room:sync_state',
+                  payload: {
+                    members: nextMembers,
+                    playback: currentPlaybackRef.current,
+                    queue: currentQueueRef.current,
+                  },
+                });
+                return nextMembers;
+              });
             }
-            case 'room:host_transferred': {
-              const { hostUserId, hostUsername, members: updatedMembers } = msg.payload || {};
-              setRoom((prev) =>
-                prev ? { ...prev, hostUserId, hostUsername } : prev
-              );
-              if (Array.isArray(updatedMembers)) {
-                setMembers(updatedMembers);
-              }
-              break;
+            break;
+          }
+          case 'room:sync_state': {
+            const { members: incomingMembers, playback: incomingPlayback, queue: incomingQueue } = msg.payload || {};
+            if (Array.isArray(incomingMembers) && incomingMembers.length > 0) {
+              setMembers((prev) => {
+                const map = new Map<string, RoomMember>();
+                prev.forEach((m) => map.set(m.userId, m));
+                incomingMembers.forEach((m) => map.set(m.userId, m));
+                return Array.from(map.values());
+              });
             }
-            case 'room:member_kicked': {
-              const { targetUserId, members: updatedMembers } = msg.payload || {};
-              if (targetUserId === activeUser.userId) {
-                onLeaveRoom();
-                return;
-              }
-              if (Array.isArray(updatedMembers)) {
-                setMembers(updatedMembers);
-              }
-              break;
+            if (incomingPlayback) {
+              setPlayback(incomingPlayback);
             }
-            case 'room:closed': {
+            if (Array.isArray(incomingQueue)) {
+              setQueue(incomingQueue);
+            }
+            break;
+          }
+          case 'room:peer_left': {
+            const leftUserId = msg.payload?.userId;
+            if (leftUserId) {
+              setMembers((prev) => prev.filter((m) => m.userId !== leftUserId));
+            }
+            break;
+          }
+          case 'room:presence_ping': {
+            const peer = msg.payload?.member as RoomMember;
+            if (peer && peer.userId !== activeUser.userId) {
+              setMembers((prev) => {
+                const exists = prev.some((m) => m.userId === peer.userId);
+                if (!exists) return [...prev, peer];
+                return prev.map((m) => (m.userId === peer.userId ? { ...m, ...peer, isOnline: true } : m));
+              });
+            }
+            break;
+          }
+          case 'room:members_updated': {
+            if (Array.isArray(msg.payload?.members)) {
+              setMembers(msg.payload.members);
+            }
+            break;
+          }
+          case 'room:host_transferred': {
+            const { hostUserId, hostUsername, members: updatedMembers } = msg.payload || {};
+            setRoom((prev) =>
+              prev ? { ...prev, hostUserId, hostUsername } : prev
+            );
+            if (Array.isArray(updatedMembers)) {
+              setMembers(updatedMembers);
+            }
+            break;
+          }
+          case 'room:member_kicked': {
+            const { targetUserId, members: updatedMembers } = msg.payload || {};
+            if (targetUserId === activeUser.userId) {
               onLeaveRoom();
-              break;
+              return;
             }
-            case 'playback:updated':
-            case 'playback:sync_check': {
-              if (msg.payload?.playback) {
-                setPlayback(msg.payload.playback);
-              }
-              break;
+            if (Array.isArray(updatedMembers)) {
+              setMembers(updatedMembers);
             }
-            case 'queue:updated': {
-              if (Array.isArray(msg.payload?.queue)) {
-                setQueue(msg.payload.queue);
-              }
-              break;
+            break;
+          }
+          case 'room:closed': {
+            onLeaveRoom();
+            break;
+          }
+          case 'playback:updated':
+          case 'playback:sync_check': {
+            if (msg.payload?.playback) {
+              setPlayback(msg.payload.playback);
             }
-            case 'chat:new_message': {
-              const incoming = msg.payload?.message as ChatMessage;
-              if (incoming) {
-                // Idempotent check to prevent duplicates
-                setMessages((prev) =>
-                  prev.some((m) => m.messageId === incoming.messageId)
-                    ? prev
-                    : [...prev, incoming]
-                );
-              }
-              break;
+            break;
+          }
+          case 'queue:updated': {
+            if (Array.isArray(msg.payload?.queue)) {
+              setQueue(msg.payload.queue);
             }
-            case 'chat:reaction_updated': {
-              const { messageId, reactions } = msg.payload || {};
+            break;
+          }
+          case 'chat:new_message': {
+            const incoming = msg.payload?.message as ChatMessage;
+            if (incoming && incoming.messageId) {
+              setMessages((prev) =>
+                prev.some((m) => m.messageId === incoming.messageId)
+                  ? prev
+                  : [...prev, incoming]
+              );
+            }
+            break;
+          }
+          case 'chat:reaction_updated': {
+            const { messageId, reactions } = msg.payload || {};
+            if (messageId) {
               setMessages((prev) =>
                 prev.map((m) => (m.messageId === messageId ? { ...m, reactions } : m))
               );
-              break;
             }
-            case 'webrtc:user_joined_vc':
-            case 'webrtc:user_left_vc': {
-              if (Array.isArray(msg.payload?.members)) {
-                setMembers(msg.payload.members);
-              }
-              handleSignalingRef.current(msg.type, msg.payload);
-              break;
-            }
-            case 'webrtc:offer':
-            case 'webrtc:answer':
-            case 'webrtc:ice_candidate': {
-              handleSignalingRef.current(msg.type, msg.payload);
-              break;
-            }
-            case 'webrtc:voice_state': {
-              const { userId, isMuted: peerMuted, isSpeaking: peerSpeaking } = msg.payload || {};
-              setMembers((prev) =>
-                prev.map((m) =>
-                  m.userId === userId
-                    ? {
-                        ...m,
-                        inVoiceChat: true,
-                        isMuted: typeof peerMuted === 'boolean' ? peerMuted : m.isMuted,
-                        isSpeaking:
-                          typeof peerSpeaking === 'boolean' ? peerSpeaking : m.isSpeaking,
-                      }
-                    : m
-                )
-              );
-              break;
-            }
+            break;
           }
-        } catch {
-          // ignore malformed packet
+          case 'webrtc:user_joined_vc':
+          case 'webrtc:user_left_vc': {
+            if (Array.isArray(msg.payload?.members)) {
+              setMembers(msg.payload.members);
+            }
+            handleSignalingRef.current(msg.type, msg.payload);
+            break;
+          }
+          case 'webrtc:offer':
+          case 'webrtc:answer':
+          case 'webrtc:ice_candidate': {
+            handleSignalingRef.current(msg.type, msg.payload);
+            break;
+          }
+          case 'webrtc:voice_state': {
+            const { userId, isMuted: peerMuted, isSpeaking: peerSpeaking } = msg.payload || {};
+            setMembers((prev) =>
+              prev.map((m) =>
+                m.userId === userId
+                  ? {
+                      ...m,
+                      inVoiceChat: true,
+                      isMuted: typeof peerMuted === 'boolean' ? peerMuted : m.isMuted,
+                      isSpeaking:
+                        typeof peerSpeaking === 'boolean' ? peerSpeaking : m.isSpeaking,
+                    }
+                  : m
+              )
+            );
+            break;
+          }
         }
-      };
-
-      socket.onclose = () => {
-        setWsConnected(false);
+      },
+      (connected: boolean, mode) => {
         if (!isUnmounted) {
-          reconnectTimerRef.current = window.setTimeout(() => {
-            connectWs();
-          }, 2500);
+          setWsConnected(connected);
+          setSyncMode(mode);
         }
-      };
-    }
+      }
+    );
 
-    connectWs();
+    realtimeClientRef.current = client;
+
+    // Presence heartbeat: keeps presence list in sync across all clients every 12 seconds
+    const presenceTimer = window.setInterval(() => {
+      if (isUnmounted) return;
+      client.send({
+        type: 'room:presence_ping',
+        payload: {
+          member: {
+            roomId,
+            userId: activeUser.userId,
+            username: activeUser.username,
+            displayName: activeUser.displayName,
+            avatarUrl: activeUser.avatarUrl,
+            role: 'member',
+            isOnline: true,
+            inVoiceChat: false,
+            isMuted: false,
+            isSpeaking: false,
+            joinedAt: Date.now(),
+          },
+        },
+      });
+    }, 12000);
 
     return () => {
       isUnmounted = true;
-      if (reconnectTimerRef.current) {
-        window.clearTimeout(reconnectTimerRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      clearInterval(presenceTimer);
+      client.close();
+      realtimeClientRef.current = null;
     };
   }, [roomId, currentUser, onLeaveRoom]);
 
@@ -294,7 +350,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             body: JSON.stringify({ action, positionSec, allowMemberAutoAdvance }),
           }
         );
-        setPlayback(res.playback);
+        if (res?.playback) {
+          setPlayback(res.playback);
+          realtimeClientRef.current?.send({
+            type: 'playback:updated',
+            payload: { playback: res.playback },
+          });
+        }
       } catch (err) {
         setToastError((err as Error).message);
         setTimeout(() => setToastError(null), 3500);
@@ -312,7 +374,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           body: JSON.stringify({ action: 'selectTrack', track }),
         }
       );
-      setPlayback(res.playback);
+      if (res?.playback) {
+        setPlayback(res.playback);
+        realtimeClientRef.current?.send({
+          type: 'playback:updated',
+          payload: { playback: res.playback },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
       setTimeout(() => setToastError(null), 3500);
@@ -325,7 +393,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         method: 'POST',
         body: JSON.stringify({ track }),
       });
-      setQueue(res.queue);
+      if (Array.isArray(res?.queue)) {
+        setQueue(res.queue);
+        realtimeClientRef.current?.send({
+          type: 'queue:updated',
+          payload: { queue: res.queue },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -345,7 +419,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         method: 'POST',
         body: JSON.stringify({ playlistUrl, tracks, playlistName, saveToMyPlaylists: true }),
       });
-      setQueue(res.queue);
+      if (Array.isArray(res?.queue)) {
+        setQueue(res.queue);
+        realtimeClientRef.current?.send({
+          type: 'queue:updated',
+          payload: { queue: res.queue },
+        });
+      }
       setToastError(null);
     } catch (err) {
       setToastError((err as Error).message);
@@ -361,7 +441,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       }>(`/api/rooms/${roomId}/queue/user-playlist/${playlistId}`, {
         method: 'POST',
       });
-      setQueue(res.queue);
+      if (Array.isArray(res?.queue)) {
+        setQueue(res.queue);
+        realtimeClientRef.current?.send({
+          type: 'queue:updated',
+          payload: { queue: res.queue },
+        });
+      }
       setToastError(null);
     } catch (err) {
       setToastError((err as Error).message);
@@ -374,7 +460,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         `/api/rooms/${roomId}/queue/${itemId}`,
         { method: 'DELETE' }
       );
-      setQueue(res.queue);
+      if (Array.isArray(res?.queue)) {
+        setQueue(res.queue);
+        realtimeClientRef.current?.send({
+          type: 'queue:updated',
+          payload: { queue: res.queue },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -389,7 +481,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           body: JSON.stringify({ itemId, direction }),
         }
       );
-      setQueue(res.queue);
+      if (Array.isArray(res?.queue)) {
+        setQueue(res.queue);
+        realtimeClientRef.current?.send({
+          type: 'queue:updated',
+          payload: { queue: res.queue },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -404,11 +502,17 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           body: JSON.stringify({ content }),
         }
       );
-      setMessages((prev) =>
-        prev.some((m) => m.messageId === res.message.messageId)
-          ? prev
-          : [...prev, res.message]
-      );
+      if (res?.message?.messageId) {
+        setMessages((prev) =>
+          prev.some((m) => m.messageId === res.message.messageId)
+            ? prev
+            : [...prev, res.message]
+        );
+        realtimeClientRef.current?.send({
+          type: 'chat:new_message',
+          payload: { message: res.message },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -423,9 +527,15 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           body: JSON.stringify({ emoji }),
         }
       );
-      setMessages((prev) =>
-        prev.map((m) => (m.messageId === messageId ? res.message : m))
-      );
+      if (res?.message?.messageId) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageId === messageId ? res.message : m))
+        );
+        realtimeClientRef.current?.send({
+          type: 'chat:reaction_updated',
+          payload: { messageId, reactions: res.message.reactions },
+        });
+      }
     } catch {
       // ignore
     }
@@ -440,6 +550,14 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       if (res.room) {
         setRoom(res.room);
         setMembers(res.room.members || []);
+        realtimeClientRef.current?.send({
+          type: 'room:host_transferred',
+          payload: {
+            hostUserId: res.room.hostUserId,
+            hostUsername: res.room.hostUsername,
+            members: res.room.members,
+          },
+        });
       }
     } catch (err) {
       setToastError((err as Error).message);
@@ -455,7 +573,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           body: JSON.stringify({ targetUserId }),
         }
       );
-      setMembers(res.members);
+      if (Array.isArray(res?.members)) {
+        setMembers(res.members);
+        realtimeClientRef.current?.send({
+          type: 'room:member_kicked',
+          payload: { targetUserId, members: res.members },
+        });
+      }
     } catch (err) {
       setToastError((err as Error).message);
     }
@@ -463,6 +587,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
 
   const handleCloseRoom = async () => {
     try {
+      realtimeClientRef.current?.send({ type: 'room:closed' });
       await apiRequest(`/api/rooms/${roomId}`, { method: 'DELETE' });
       onLeaveRoom();
     } catch (err) {
@@ -549,12 +674,12 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             {wsConnected ? (
               <>
                 <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Live Sync</span>
+                <span>{syncMode === 'cloud-relay' ? 'Cloud Relay (Live)' : 'Real-Time Sync'}</span>
               </>
             ) : (
               <>
                 <WifiOff className="w-3.5 h-3.5 text-amber-500" />
-                <span>Reconnecting...</span>
+                <span>Connecting...</span>
               </>
             )}
           </div>

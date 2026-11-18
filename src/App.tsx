@@ -310,11 +310,13 @@ function JamTogetherShell() {
       {/* Main Content Area */}
       <main className="flex-1">
         {activeRoomId ? (
-          <JamRoomView
-            roomId={activeRoomId}
-            currentUser={user}
-            onLeaveRoom={leaveRoom}
-          />
+          <ErrorBoundary>
+            <JamRoomView
+              roomId={activeRoomId}
+              currentUser={user}
+              onLeaveRoom={leaveRoom}
+            />
+          </ErrorBoundary>
         ) : currentPage === 'settings' ? (
           <ErrorBoundary>
             <SettingsView
