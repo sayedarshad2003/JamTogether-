@@ -523,12 +523,31 @@ async function handleOfflineFallback<T>(
       userPlaylists = [];
     }
 
+    let friends: Friendship[] = [];
+    try {
+      friends = JSON.parse(localStorage.getItem('jamtogether_local_friends') || '[]');
+    } catch {
+      friends = [];
+    }
+
+    let allSavedUsers: any[] = [];
+    try {
+      allSavedUsers = JSON.parse(localStorage.getItem('jamtogether_saved_google_accounts') || '[]');
+    } catch {
+      allSavedUsers = [];
+    }
+    const userMap = new Map<string, any>();
+    if (currentUser) userMap.set(currentUser.userId, currentUser);
+    allSavedUsers.forEach((u) => {
+      if (u.userId) userMap.set(u.userId, u);
+    });
+
     return {
       rooms: combinedRooms,
       myCreatedRooms,
       recentlyJoinedRooms: [],
-      friends: [],
-      allUsers: currentUser ? [currentUser] : [],
+      friends,
+      allUsers: Array.from(userMap.values()),
       history,
       userPlaylists,
     } as any;
@@ -764,8 +783,14 @@ async function handleOfflineFallback<T>(
     if (!room.messages) room.messages = [];
     if (!room.members) room.members = [];
 
-    // GET /api/rooms/:roomId
+    // GET or DELETE /api/rooms/:roomId
     if (!subResource) {
+      if (method === 'DELETE') {
+        const remainingRooms = localRooms.filter((r) => r.roomId !== targetRoomId);
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(remainingRooms));
+        globalRoomDiscovery.unbroadcastRoom(targetRoomId, room.roomCode);
+        return { success: true, message: `Room ${targetRoomId} deleted.` } as any;
+      }
       return { room } as any;
     }
 
@@ -914,13 +939,19 @@ async function handleOfflineFallback<T>(
         return { queue: room.queue } as any;
       }
 
-      if (subId && method === 'DELETE') {
-        // subId is itemId
-        room.queue = room.queue.filter((item) => item.itemId !== subId);
-        room.queue.forEach((item, index) => {
-          item.orderIndex = index;
-        });
+      if (method === 'DELETE') {
+        if (subId) {
+          // subId is itemId
+          room.queue = room.queue.filter((item) => item.itemId !== subId);
+          room.queue.forEach((item, index) => {
+            item.orderIndex = index;
+          });
+        } else {
+          // Clean/clear entire room queue
+          room.queue = [];
+        }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        globalRoomDiscovery.broadcastRoom(room);
         return { queue: room.queue } as any;
       }
 
@@ -1044,7 +1075,7 @@ async function handleOfflineFallback<T>(
     return res as any;
   }
 
-  // 11. Playlists
+  // 11. Playlists (GET, POST, DELETE)
   if (endpoint.startsWith('/api/playlists')) {
     let playlists: UserPlaylist[] = [];
     try {
@@ -1052,6 +1083,14 @@ async function handleOfflineFallback<T>(
     } catch {
       playlists = [];
     }
+
+    const cleanPath = endpoint.split('?')[0].replace(/^\/api\/playlists\/?/, '').trim();
+    if (method === 'DELETE' && cleanPath) {
+      playlists = playlists.filter((p) => p.playlistId !== cleanPath);
+      localStorage.setItem(LOCAL_PLAYLISTS_KEY, JSON.stringify(playlists));
+      return { success: true, message: 'Playlist deleted successfully.', playlists } as any;
+    }
+
     if (method === 'POST') {
       const pl: UserPlaylist = {
         playlistId: 'pl_' + Date.now(),
@@ -1071,21 +1110,99 @@ async function handleOfflineFallback<T>(
     return { playlists } as any;
   }
 
-  // 12. Delete Data
+  // 12. Friends & Invitations (/api/friends)
+  if (endpoint.startsWith('/api/friends')) {
+    let friends: Friendship[] = [];
+    try {
+      friends = JSON.parse(localStorage.getItem('jamtogether_local_friends') || '[]');
+    } catch {
+      friends = [];
+    }
+
+    if (endpoint === '/api/friends/add' && method === 'POST') {
+      const { friendUsername } = body;
+      const cleanUsername = (friendUsername || '').replace(/^@/, '').trim();
+      let users: any[] = [];
+      try {
+        users = JSON.parse(localStorage.getItem('jamtogether_saved_google_accounts') || '[]');
+      } catch {}
+      const targetUser = users.find(
+        (u: any) =>
+          u.username?.toLowerCase() === cleanUsername.toLowerCase() ||
+          u.email?.toLowerCase().startsWith(cleanUsername.toLowerCase())
+      );
+      const newFriend: Friendship = {
+        userId: 'current_user',
+        friendId: targetUser?.userId || 'usr_f_' + Math.random().toString(36).substring(2, 7),
+        friendUsername: targetUser?.username || cleanUsername,
+        friendDisplayName: targetUser?.displayName || cleanUsername,
+        friendAvatarUrl: targetUser?.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${cleanUsername}`,
+        status: 'accepted',
+        friendOnlineStatus: 'online',
+        updatedAt: Date.now(),
+      };
+      friends = friends.filter((f) => f.friendUsername !== newFriend.friendUsername);
+      friends.push(newFriend);
+      localStorage.setItem('jamtogether_local_friends', JSON.stringify(friends));
+      return { friendship: newFriend } as any;
+    }
+
+    if (method === 'DELETE') {
+      const targetFriendId = endpoint.replace('/api/friends/', '').split('?')[0].trim();
+      friends = friends.filter(
+        (f) => f.friendId !== targetFriendId && f.friendUsername !== targetFriendId
+      );
+      localStorage.setItem('jamtogether_local_friends', JSON.stringify(friends));
+      return { success: true, message: 'Friend removed successfully.' } as any;
+    }
+
+    return { friends } as any;
+  }
+
+  // 13. User Data Privacy & Account Deletion
   if (endpoint === '/api/user/delete-data') {
     localStorage.removeItem(LOCAL_HISTORY_KEY);
     localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
-    return { success: true } as any;
-  }
-  if (endpoint === '/api/user/me') {
-    localStorage.removeItem(CURRENT_USER_KEY);
-    localStorage.removeItem(LOCAL_HISTORY_KEY);
-    localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
-    setStoredToken(null);
-    return { success: true } as any;
+    return {
+      success: true,
+      message: 'Your listening history and personal playlists have been completely cleared.',
+    } as any;
   }
 
-  // 13. Super Admin Verify (/api/admin/verify)
+  if (endpoint === '/api/user/me') {
+    if (method === 'DELETE') {
+      let currentUser: UserProfile | null = null;
+      try {
+        currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+      } catch {}
+      if (currentUser?.userId || currentUser?.email) {
+        let accounts = JSON.parse(localStorage.getItem('jamtogether_saved_google_accounts') || '[]');
+        if (Array.isArray(accounts)) {
+          accounts = accounts.filter(
+            (a: any) =>
+              a.userId !== currentUser?.userId &&
+              a.email !== currentUser?.email
+          );
+          localStorage.setItem('jamtogether_saved_google_accounts', JSON.stringify(accounts));
+        }
+      }
+      localStorage.removeItem(CURRENT_USER_KEY);
+      localStorage.removeItem(LOCAL_HISTORY_KEY);
+      localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
+      setStoredToken(null);
+      return {
+        success: true,
+        message: 'Your account and personal data have been completely deleted.',
+      } as any;
+    }
+    let currentUser: UserProfile | null = null;
+    try {
+      currentUser = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null');
+    } catch {}
+    return { user: currentUser } as any;
+  }
+
+  // 14. Super Admin Verify (/api/admin/verify)
   if (endpoint === '/api/admin/verify') {
     const passkey = (body.passkey || '').trim();
     if (passkey === 'admin123' || passkey.length > 0) {
@@ -1094,7 +1211,7 @@ async function handleOfflineFallback<T>(
     throw new Error('Invalid passkey. Default is admin123');
   }
 
-  // 14. Super Admin Overview (/api/admin/overview)
+  // 15. Super Admin Overview (/api/admin/overview)
   if (endpoint.startsWith('/api/admin/overview')) {
     let users: any[] = [];
     try {
@@ -1115,6 +1232,12 @@ async function handleOfflineFallback<T>(
     } catch {
       history = [];
     }
+    let friends: Friendship[] = [];
+    try {
+      friends = JSON.parse(localStorage.getItem('jamtogether_local_friends') || '[]');
+    } catch {
+      friends = [];
+    }
 
     const clientId = getGlobalGoogleClientId();
     const clientSecret =
@@ -1128,9 +1251,14 @@ async function handleOfflineFallback<T>(
         queue: localRooms.reduce((sum, r) => sum + (r.queue?.length || 0), 0),
         messages: localRooms.reduce((sum, r) => sum + (r.messages?.length || 0), 0),
         history: history.length,
-        friendships: 0,
+        friendships: friends.length,
         playlists: playlists.length,
-        totalRecords: users.length + localRooms.length + playlists.length + history.length,
+        totalRecords:
+          users.length +
+          localRooms.length +
+          playlists.length +
+          history.length +
+          friends.length,
       },
       googleConfig: {
         clientId,
@@ -1148,8 +1276,8 @@ async function handleOfflineFallback<T>(
         excelFilePath: 'data/jamtogether_database.xlsx',
         excelStats: {
           exists: true,
-          sizeBytes: 15480,
-          sizeFormatted: '15.1 KB',
+          sizeBytes: 9850,
+          sizeFormatted: '9.8 KB',
           sheetNames: [
             'Users',
             'JamRooms',
@@ -1157,16 +1285,16 @@ async function handleOfflineFallback<T>(
             'MusicQueue',
             'PlaybackState',
             'ChatMessages',
-            'History',
+            'ListeningHistory',
             'Friendships',
-            'Playlists',
+            'UserPlaylists',
           ],
         },
       },
     } as any;
   }
 
-  // 15. Super Admin Google Config (/api/admin/config/google)
+  // 16. Super Admin Google Config (/api/admin/config/google)
   if (endpoint === '/api/admin/config/google') {
     if (body.clientId !== undefined) {
       localStorage.setItem('jamtogether_admin_google_client_id', body.clientId);
@@ -1186,10 +1314,11 @@ async function handleOfflineFallback<T>(
     } as any;
   }
 
-  // 16. Super Admin Records Inspection (/api/admin/records)
+  // 17. Super Admin Records Inspection (/api/admin/records)
   if (endpoint.startsWith('/api/admin/records')) {
     const url = new URL(endpoint, 'http://localhost');
     const type = url.searchParams.get('type') || 'USER';
+
     if (type === 'USER') {
       let users: any[] = [];
       try {
@@ -1207,6 +1336,7 @@ async function handleOfflineFallback<T>(
         })),
       } as any;
     }
+
     if (type === 'ROOM') {
       const rooms = getCleanLocalRooms();
       return {
@@ -1219,10 +1349,87 @@ async function handleOfflineFallback<T>(
         })),
       } as any;
     }
+
+    if (type === 'PLAYLIST') {
+      let playlists: UserPlaylist[] = [];
+      try {
+        playlists = JSON.parse(localStorage.getItem(LOCAL_PLAYLISTS_KEY) || '[]');
+      } catch {}
+      return {
+        records: playlists.map((pl) => ({
+          PK: `USER#${pl.userId || 'user'}`,
+          SK: `PLAYLIST#${pl.playlistId}`,
+          entityType: 'PLAYLIST',
+          data: pl,
+          updatedAt: pl.updatedAt || Date.now(),
+        })),
+      } as any;
+    }
+
+    if (type === 'HISTORY') {
+      let history: ListeningHistoryEntry[] = [];
+      try {
+        history = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || '[]');
+      } catch {}
+      return {
+        records: history.map((h) => ({
+          PK: `USER#${h.userId || 'user'}`,
+          SK: `HISTORY#${h.entryId}`,
+          entityType: 'HISTORY',
+          data: h,
+          updatedAt: h.playedAt || Date.now(),
+        })),
+      } as any;
+    }
+
+    if (type === 'QUEUE') {
+      const rooms = getCleanLocalRooms();
+      const records = rooms.flatMap((r) =>
+        (r.queue || []).map((q) => ({
+          PK: `ROOM#${r.roomId}`,
+          SK: `QUEUE#${q.itemId}`,
+          entityType: 'QUEUE',
+          data: q,
+          updatedAt: q.addedAt || Date.now(),
+        }))
+      );
+      return { records } as any;
+    }
+
+    if (type === 'MESSAGE') {
+      const rooms = getCleanLocalRooms();
+      const records = rooms.flatMap((r) =>
+        (r.messages || []).map((m) => ({
+          PK: `ROOM#${r.roomId}`,
+          SK: `MESSAGE#${m.messageId}`,
+          entityType: 'MESSAGE',
+          data: m,
+          updatedAt: m.timestamp || Date.now(),
+        }))
+      );
+      return { records } as any;
+    }
+
+    if (type === 'FRIENDSHIP') {
+      let friends: Friendship[] = [];
+      try {
+        friends = JSON.parse(localStorage.getItem('jamtogether_local_friends') || '[]');
+      } catch {}
+      return {
+        records: friends.map((f) => ({
+          PK: `USER#${f.userId || 'user'}`,
+          SK: `FRIEND#${f.friendId}`,
+          entityType: 'FRIENDSHIP',
+          data: f,
+          updatedAt: Date.now(),
+        })),
+      } as any;
+    }
+
     return { records: [] } as any;
   }
 
-  // 17. Super Admin Sync Excel (/api/admin/sync-excel)
+  // 18. Super Admin Sync Excel (/api/admin/sync-excel)
   if (endpoint === '/api/admin/sync-excel') {
     return {
       success: true,
@@ -1230,29 +1437,87 @@ async function handleOfflineFallback<T>(
     } as any;
   }
 
-  // 18. Super Admin Wipe Data (/api/admin/wipe-data)
-  if (endpoint === '/api/admin/wipe-data') {
-    const scope = body.scope || 'history';
+  // 19. Super Admin Wipe Data & Database Reset (/api/admin/wipe, /api/admin/wipe-data, /api/database/reset)
+  if (
+    endpoint === '/api/admin/wipe' ||
+    endpoint === '/api/admin/wipe-data' ||
+    endpoint === '/api/database/reset'
+  ) {
+    const scope = body.scope || (endpoint === '/api/database/reset' ? 'all' : 'history');
+    let deletedCount = 0;
+
     if (scope === 'history') {
+      let history: any[] = [];
+      try {
+        history = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || '[]');
+      } catch {}
+      deletedCount = history.length;
       localStorage.removeItem(LOCAL_HISTORY_KEY);
+    } else if (scope === 'messages') {
+      const localRooms = getCleanLocalRooms();
+      localRooms.forEach((r) => {
+        deletedCount += r.messages?.length || 0;
+        r.messages = [];
+      });
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
     } else if (scope === 'rooms') {
+      const localRooms = getCleanLocalRooms();
+      deletedCount = localRooms.length;
+      localRooms.forEach((r) => globalRoomDiscovery.unbroadcastRoom(r.roomId, r.roomCode));
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
     } else if (scope === 'all') {
+      const localRooms = getCleanLocalRooms();
+      deletedCount = localRooms.length;
+      localRooms.forEach((r) => globalRoomDiscovery.unbroadcastRoom(r.roomId, r.roomCode));
       localStorage.removeItem(LOCAL_HISTORY_KEY);
       localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
+      localStorage.removeItem('jamtogether_local_friends');
+      localStorage.setItem('jamtogether_saved_google_accounts', JSON.stringify([]));
+      deletedCount = -1;
     }
+
     return {
       success: true,
-      message: `Successfully wiped ${scope} records. System state restored.`,
+      scope,
+      deletedCount,
+      message:
+        scope === 'all'
+          ? 'Complete database reset to scratch. All records wiped.'
+          : `Successfully wiped ${scope} records. System state restored.`,
     } as any;
   }
 
-  // 19. Super Admin Delete User
+  // 20. Super Admin Delete User (/api/admin/users/:userId)
   if (endpoint.startsWith('/api/admin/users/')) {
+    const targetId = endpoint.replace('/api/admin/users/', '').split('?')[0].trim();
+    try {
+      let accounts = JSON.parse(localStorage.getItem('jamtogether_saved_google_accounts') || '[]');
+      if (Array.isArray(accounts)) {
+        accounts = accounts.filter(
+          (a: any) =>
+            a.userId !== targetId &&
+            a.email !== targetId &&
+            a.username !== targetId
+        );
+        localStorage.setItem('jamtogether_saved_google_accounts', JSON.stringify(accounts));
+      }
+    } catch {}
+
+    try {
+      const localRooms = getCleanLocalRooms();
+      localRooms.forEach((r) => {
+        if (r.members) {
+          r.members = r.members.filter((m) => m.userId !== targetId);
+        }
+      });
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+    } catch {}
+
     return {
       success: true,
-      message: 'User successfully removed.',
+      userId: targetId,
+      message: `User ${targetId} successfully removed.`,
     } as any;
   }
 

@@ -163,8 +163,13 @@ export function exportToExcel(records: DynamoRecord[]): string {
 
     // Helper to create sheet even if empty (with header structure)
     const appendSheet = (data: any[], defaultColumns: string[], sheetName: string) => {
-      const sheetData = data.length > 0 ? data : [defaultColumns.reduce((acc, col) => ({ ...acc, [col]: '' }), {})];
-      const ws = XLSX.utils.json_to_sheet(sheetData);
+      let ws: XLSX.WorkSheet;
+      if (data.length > 0) {
+        ws = XLSX.utils.json_to_sheet(data);
+      } else {
+        // Headers only, 0 data rows
+        ws = XLSX.utils.aoa_to_sheet([defaultColumns]);
+      }
       XLSX.utils.book_append_sheet(workbook, ws, sheetName);
     };
 

@@ -316,6 +316,54 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
     }
   };
 
+  const handleDownloadExcel = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/database/excel?key=${encodeURIComponent(adminKey)}`);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('spreadsheet') || contentType.includes('octet-stream')) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'jamtogether_database.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback: Client-side generation using xlsx library (works 100% on AWS Amplify static hosting)
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.utils.book_new();
+      const sheets: Record<string, string[]> = {
+        Users: ['User ID', 'Username', 'Display Name', 'Email', 'Is Guest', 'Auth Provider', 'Status', 'Avatar URL', 'Avatar (Base64)', 'Created At'],
+        JamRooms: ['Room ID', 'Room Code', 'Room Name', 'Description', 'Genre', 'Is Private', 'Host User ID', 'Host Username', 'Created At'],
+        MusicQueue: ['Queue Item ID', 'Room ID', 'Order Index', 'Video ID', 'Song Title', 'Artist / Channel', 'Duration', 'Added By (User)', 'Added At'],
+        RoomMembers: ['Room ID', 'User ID', 'Username', 'Display Name', 'Is Host', 'In Voice Chat', 'Is Muted', 'Joined At'],
+        PlaybackState: ['Room ID', 'Playback Status', 'Video ID', 'Song Title', 'Artist / Channel', 'Position (Sec)', 'Last Updated'],
+        ChatMessages: ['Message ID', 'Room ID', 'Sender User ID', 'Sender Display Name', 'Message Content', 'Sent At'],
+        ListeningHistory: ['History Entry ID', 'User ID', 'Room ID', 'Room Name', 'Video ID', 'Song Title', 'Played At'],
+        Friendships: ['User ID', 'Friend User ID', 'Friend Username', 'Friend Display Name', 'Status', 'Last Updated'],
+        UserPlaylists: ['Playlist ID', 'User ID', 'Playlist Name', 'Track Count', 'Source URL', 'Description', 'Created At'],
+      };
+
+      for (const [sheetName, cols] of Object.entries(sheets)) {
+        const ws = XLSX.utils.aoa_to_sheet([cols]);
+        XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+      }
+
+      XLSX.writeFile(workbook, 'jamtogether_database.xlsx');
+    } catch (err) {
+      alert('Failed to export Excel database: ' + (err as Error).message);
+    }
+  };
+
   const handleWipeData = async () => {
     if (wipeConfirmInput.trim() !== 'DELETE') {
       alert('Please type DELETE in capital letters to confirm this action.');
@@ -932,14 +980,14 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           <span>Force Sync to Excel</span>
                         </button>
 
-                        <a
-                          href={`/api/database/excel?key=${encodeURIComponent(adminKey)}`}
-                          download="jamtogether_database.xlsx"
+                        <button
+                          type="button"
+                          onClick={handleDownloadExcel}
                           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm transition-all"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Download .xlsx</span>
-                        </a>
+                        </button>
                       </div>
                     </div>
 
