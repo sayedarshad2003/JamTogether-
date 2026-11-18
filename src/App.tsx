@@ -13,6 +13,7 @@ import { JamRoomView } from './rooms/JamRoomView.tsx';
 import { SettingsView } from './settings/SettingsView.tsx';
 import { CreateRoomModal, JoinRoomModal } from './rooms/CreateJoinModals.tsx';
 import { apiRequest } from './aws-services/apiClient.ts';
+import { globalRoomDiscovery } from './realtime/globalDiscovery.ts';
 import {
   JamRoom,
   Friendship,
@@ -146,6 +147,25 @@ function JamTogetherShell() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard, user?.userId]);
+
+  // Subscribe to real-time multi-device global room discovery
+  useEffect(() => {
+    const unsub = globalRoomDiscovery.subscribe((discoveredRooms) => {
+      if (discoveredRooms && discoveredRooms.length > 0) {
+        setRooms((prev) => {
+          const roomMap = new Map<string, JamRoom>();
+          prev.forEach((r) => roomMap.set(r.roomId, r));
+          discoveredRooms.forEach((r) => {
+            if (!r.isPrivate && !roomMap.has(r.roomId)) {
+              roomMap.set(r.roomId, r);
+            }
+          });
+          return Array.from(roomMap.values());
+        });
+      }
+    });
+    return unsub;
+  }, []);
 
   const enterRoom = (roomId: string) => {
     setActiveRoomId(roomId);

@@ -1,0 +1,320 @@
+/**
+ * Global Cross-Device Room Discovery & Multi-Peer Relay Engine for JamTogether
+ * 
+ * Enables instant multi-device room discovery, room code resolution, and live synchronization
+ * across different browsers, mobile devices, and computers worldwide on AWS Amplify static hosting.
+ *
+ * Backed by EMQX Public WebSocket MQTT Broker (wss://broker.emqx.io:8084/mqtt) with Retained Messages.
+ */
+
+import { JamRoom } from '../types/jam.ts';
+
+function textToBytes(str: string): Uint8Array {
+  return new TextEncoder().encode(str);
+}
+
+function makeConnectPacket(clientId: string): Uint8Array {
+  const protocol = new Uint8Array([0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x04, 0x02, 0x00, 0x3c]);
+  const cIdBytes = textToBytes(clientId);
+  const payload = new Uint8Array(2 + cIdBytes.length);
+  payload[0] = (cIdBytes.length >> 8) & 0xff;
+  payload[1] = cIdBytes.length & 0xff;
+  payload.set(cIdBytes, 2);
+
+  const remainingLength = protocol.length + payload.length;
+  const packet = new Uint8Array(2 + remainingLength);
+  packet[0] = 0x10;
+  packet[1] = remainingLength;
+  packet.set(protocol, 2);
+  packet.set(payload, 2 + protocol.length);
+  return packet;
+}
+
+function makeSubscribePacket(topic: string, packetId = 1): Uint8Array {
+  const tBytes = textToBytes(topic);
+  const remainingLength = 2 + 2 + tBytes.length + 1;
+  const packet = new Uint8Array(2 + remainingLength);
+  packet[0] = 0x82;
+  packet[1] = remainingLength;
+  packet[2] = (packetId >> 8) & 0xff;
+  packet[3] = packetId & 0xff;
+  packet[4] = (tBytes.length >> 8) & 0xff;
+  packet[5] = tBytes.length & 0xff;
+  packet.set(tBytes, 6);
+  packet[6 + tBytes.length] = 0x00; // QoS 0
+  return packet;
+}
+
+function makePublishPacket(topic: string, payloadStr: string, retain = false): Uint8Array {
+  const tBytes = textToBytes(topic);
+  const pBytes = textToBytes(payloadStr);
+  const variableHeaderLength = 2 + tBytes.length;
+  const remainingLength = variableHeaderLength + pBytes.length;
+
+  const remBytes: number[] = [];
+  let rem = remainingLength;
+  do {
+    let b = rem % 128;
+    rem = Math.floor(rem / 128);
+    if (rem > 0) b |= 0x80;
+    remBytes.push(b);
+  } while (rem > 0);
+
+  const packet = new Uint8Array(1 + remBytes.length + remainingLength);
+  packet[0] = 0x30 | (retain ? 0x01 : 0x00);
+  packet.set(remBytes, 1);
+  const topicOffset = 1 + remBytes.length;
+  packet[topicOffset] = (tBytes.length >> 8) & 0xff;
+  packet[topicOffset + 1] = tBytes.length & 0xff;
+  packet.set(tBytes, topicOffset + 2);
+  packet.set(pBytes, topicOffset + 2 + tBytes.length);
+  return packet;
+}
+
+function parsePublishPacket(data: ArrayBuffer | Uint8Array): { topic: string; payload: string } | null {
+  const bytes = new Uint8Array(data);
+  if ((bytes[0] & 0xf0) !== 0x30) return null;
+
+  let offset = 1;
+  while (offset < bytes.length && (bytes[offset] & 0x80) !== 0) {
+    offset++;
+  }
+  offset++;
+
+  if (offset + 2 > bytes.length) return null;
+  const topicLen = (bytes[offset] << 8) | bytes[offset + 1];
+  const topicStart = offset + 2;
+  const payloadOffset = topicStart + topicLen;
+  if (payloadOffset > bytes.length) return null;
+
+  const topicBytes = bytes.subarray(topicStart, payloadOffset);
+  const payloadBytes = bytes.subarray(payloadOffset);
+  return {
+    topic: new TextDecoder().decode(topicBytes),
+    payload: new TextDecoder().decode(payloadBytes),
+  };
+}
+
+class GlobalRoomDiscoveryService {
+  private socket: WebSocket | null = null;
+  private isConnected = false;
+  private clientId = `jam_disc_${Math.random().toString(36).substring(2, 9)}`;
+  private discoveredRoomsMap = new Map<string, JamRoom>();
+  private codeToRoomMap = new Map<string, JamRoom>();
+  private listeners = new Set<(rooms: JamRoom[]) => void>();
+  private reconnectTimer: number | null = null;
+  private pingTimer: number | null = null;
+
+  constructor() {
+    this.connect();
+  }
+
+  public subscribe(listener: (rooms: JamRoom[]) => void): () => void {
+    this.listeners.add(listener);
+    // Immediately notify with any currently known discovered rooms
+    listener(this.getDiscoveredRooms());
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  public getDiscoveredRooms(): JamRoom[] {
+    return Array.from(this.discoveredRoomsMap.values());
+  }
+
+  public getRoomByCode(code: string): JamRoom | null {
+    const clean = code.replace(/.*[?&]room=([^&]+).*/, '$1').replace(/^JAM-?/i, '').trim().toUpperCase();
+    if (!clean) return null;
+
+    if (this.codeToRoomMap.has(clean)) {
+      return this.codeToRoomMap.get(clean)!;
+    }
+
+    for (const r of this.discoveredRoomsMap.values()) {
+      const rCode = r.roomCode.replace(/^JAM-?/i, '').toUpperCase();
+      if (rCode === clean || r.roomId.toLowerCase() === `jam_${clean.toLowerCase()}`) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  private notify() {
+    const rooms = this.getDiscoveredRooms();
+    this.listeners.forEach((l) => {
+      try {
+        l(rooms);
+      } catch (err) {
+        console.warn('Listener error in global discovery:', err);
+      }
+    });
+  }
+
+  private connect() {
+    try {
+      if (this.socket) {
+        try {
+          this.socket.close();
+        } catch {}
+      }
+
+      this.socket = new WebSocket('wss://broker.emqx.io:8084/mqtt', ['mqtt']);
+      this.socket.binaryType = 'arraybuffer';
+
+      this.socket.onopen = () => {
+        this.isConnected = true;
+        this.socket?.send(makeConnectPacket(this.clientId) as any);
+
+        setTimeout(() => {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            // Subscribe to all public rooms published with retain
+            this.socket.send(makeSubscribePacket('jamtogether/discovery/rooms/+') as any);
+            // Subscribe to room codes published with retain
+            this.socket.send(makeSubscribePacket('jamtogether/codes/+') as any);
+          }
+        }, 300);
+
+        // Ping keepalive every 25s
+        if (this.pingTimer) clearInterval(this.pingTimer);
+        this.pingTimer = window.setInterval(() => {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(new Uint8Array([0xc0, 0x00]) as any);
+          }
+        }, 25000);
+      };
+
+      this.socket.onmessage = (event) => {
+        try {
+          const parsed = parsePublishPacket(event.data);
+          if (!parsed) return;
+          const { topic, payload } = parsed;
+
+          // 1. Discovery Rooms topic: jamtogether/discovery/rooms/{roomId}
+          if (topic.startsWith('jamtogether/discovery/rooms/')) {
+            const parts = topic.split('/');
+            const roomId = parts[parts.length - 1];
+
+            if (!payload.trim() || payload === 'null') {
+              this.discoveredRoomsMap.delete(roomId);
+              this.notify();
+              return;
+            }
+
+            const roomData = JSON.parse(payload) as JamRoom;
+            if (roomData && roomData.roomId) {
+              this.discoveredRoomsMap.set(roomData.roomId, roomData);
+              const cleanCode = roomData.roomCode.replace(/^JAM-?/i, '').toUpperCase();
+              this.codeToRoomMap.set(cleanCode, roomData);
+              this.notify();
+            }
+          }
+
+          // 2. Room Code topic: jamtogether/codes/{code}
+          if (topic.startsWith('jamtogether/codes/')) {
+            const parts = topic.split('/');
+            const codeKey = parts[parts.length - 1].toUpperCase();
+
+            if (payload.trim() && payload !== 'null') {
+              try {
+                const roomData = JSON.parse(payload) as JamRoom;
+                if (roomData && roomData.roomId) {
+                  this.codeToRoomMap.set(codeKey, roomData);
+                  this.discoveredRoomsMap.set(roomData.roomId, roomData);
+                  this.notify();
+                }
+              } catch {}
+            }
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      this.socket.onclose = () => {
+        this.isConnected = false;
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = window.setTimeout(() => {
+          this.connect();
+        }, 3000);
+      };
+
+      this.socket.onerror = () => {
+        // Socket will close and trigger onclose reconnect
+      };
+    } catch (e) {
+      console.warn('Discovery connection failed:', e);
+    }
+  }
+
+  /**
+   * Broadcasts a room across all devices in real-time.
+   * If public, announces to jamtogether/discovery/rooms/{roomId} with retain = true.
+   * Always registers the roomCode to jamtogether/codes/{roomCode} with retain = true.
+   */
+  public broadcastRoom(room: JamRoom) {
+    if (!room || !room.roomId) return;
+    const cleanCode = room.roomCode.replace(/^JAM-?/i, '').trim().toUpperCase();
+
+    // Cache locally
+    this.discoveredRoomsMap.set(room.roomId, room);
+    this.codeToRoomMap.set(cleanCode, room);
+    this.notify();
+
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+
+    try {
+      const payloadStr = JSON.stringify(room);
+
+      // 1. Broadcast by room code for instant Join Code lookup on any device
+      const codePkt = makePublishPacket(`jamtogether/codes/${cleanCode}`, payloadStr, true);
+      this.socket.send(codePkt as any);
+
+      const fullCodePkt = makePublishPacket(
+        `jamtogether/codes/${room.roomCode.toUpperCase()}`,
+        payloadStr,
+        true
+      );
+      this.socket.send(fullCodePkt as any);
+
+      // 2. If public, broadcast to discovery rooms for Dashboard live room showcase
+      if (!room.isPrivate) {
+        const discPkt = makePublishPacket(
+          `jamtogether/discovery/rooms/${room.roomId}`,
+          payloadStr,
+          true
+        );
+        this.socket.send(discPkt as any);
+      }
+    } catch (err) {
+      console.warn('Failed to broadcast room online:', err);
+    }
+  }
+
+  /**
+   * Clears retained messages when a room is explicitly deleted or closed.
+   */
+  public unbroadcastRoom(roomId: string, roomCode?: string) {
+    this.discoveredRoomsMap.delete(roomId);
+    if (roomCode) {
+      const clean = roomCode.replace(/^JAM-?/i, '').toUpperCase();
+      this.codeToRoomMap.delete(clean);
+    }
+    this.notify();
+
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+
+    try {
+      // Retained message with empty payload clears it in MQTT broker
+      const clearPkt = makePublishPacket(`jamtogether/discovery/rooms/${roomId}`, '', true);
+      this.socket.send(clearPkt as any);
+
+      if (roomCode) {
+        const clean = roomCode.replace(/^JAM-?/i, '').toUpperCase();
+        this.socket.send(makePublishPacket(`jamtogether/codes/${clean}`, '', true) as any);
+      }
+    } catch {}
+  }
+}
+
+// Global Singleton Instance
+export const globalRoomDiscovery = new GlobalRoomDiscoveryService();

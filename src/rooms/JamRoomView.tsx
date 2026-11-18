@@ -22,6 +22,7 @@ import {
 } from '../types/jam.ts';
 import { apiRequest } from '../aws-services/apiClient.ts';
 import { RoomRealtimeClient, RealtimeMessage } from '../realtime/roomSync.ts';
+import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 import { YouTubePlayer } from '../youtube/YouTubePlayer.tsx';
 import { YouTubeSearchModal } from '../youtube/YouTubeSearchModal.tsx';
 import { useWebRTCVoice } from '../voice-chat/useWebRTCVoice.ts';
@@ -105,6 +106,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         setQueue(Array.isArray(res.room.queue) ? res.room.queue : []);
         setMessages(Array.isArray(res.room.messages) ? res.room.messages : []);
         if (res.room.playback) setPlayback(res.room.playback);
+        globalRoomDiscovery.broadcastRoom(res.room);
       }
     } catch (err) {
       setToastError((err as Error).message);
@@ -588,6 +590,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const handleCloseRoom = async () => {
     try {
       realtimeClientRef.current?.send({ type: 'room:closed' });
+      globalRoomDiscovery.unbroadcastRoom(roomId, room?.roomCode);
       await apiRequest(`/api/rooms/${roomId}`, { method: 'DELETE' });
       onLeaveRoom();
     } catch (err) {

@@ -8,6 +8,7 @@ import {
   ListeningHistoryEntry,
   UserPlaylist,
 } from '../types/jam.ts';
+import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 
 const TOKEN_STORAGE_KEY = 'jamtogether_cognito_token';
 const CURRENT_USER_KEY = 'jamtogether_current_user';
@@ -482,6 +483,17 @@ async function handleOfflineFallback<T>(
   // 7. Dashboard (/api/dashboard)
   if (endpoint === '/api/dashboard') {
     const localRooms = getCleanLocalRooms();
+    const discovered = globalRoomDiscovery.getDiscoveredRooms();
+
+    // Merge local rooms with discovered public rooms from other devices
+    const roomMap = new Map<string, JamRoom>();
+    localRooms.forEach((r) => roomMap.set(r.roomId, r));
+    discovered.forEach((r) => {
+      if (!roomMap.has(r.roomId)) {
+        roomMap.set(r.roomId, r);
+      }
+    });
+    const combinedRooms = Array.from(roomMap.values());
 
     let currentUser: UserProfile | null = null;
     try {
@@ -492,7 +504,7 @@ async function handleOfflineFallback<T>(
     }
 
     const myCreatedRooms = currentUser
-      ? localRooms.filter((r) => r.hostUserId === currentUser?.userId)
+      ? combinedRooms.filter((r) => r.hostUserId === currentUser?.userId)
       : [];
 
     let history: ListeningHistoryEntry[] = [];
@@ -512,7 +524,7 @@ async function handleOfflineFallback<T>(
     }
 
     return {
-      rooms: localRooms,
+      rooms: combinedRooms,
       myCreatedRooms,
       recentlyJoinedRooms: [],
       friends: [],
@@ -526,7 +538,13 @@ async function handleOfflineFallback<T>(
   if (endpoint === '/api/rooms') {
     if (method === 'GET') {
       const localRooms = getCleanLocalRooms();
-      return { rooms: localRooms } as any;
+      const discovered = globalRoomDiscovery.getDiscoveredRooms();
+      const roomMap = new Map<string, JamRoom>();
+      localRooms.forEach((r) => roomMap.set(r.roomId, r));
+      discovered.forEach((r) => {
+        if (!roomMap.has(r.roomId)) roomMap.set(r.roomId, r);
+      });
+      return { rooms: Array.from(roomMap.values()) } as any;
     }
 
     if (method === 'POST') {
@@ -554,10 +572,18 @@ async function handleOfflineFallback<T>(
         }
       }
 
-      const roomId = 'jam_' + Math.random().toString(36).substring(2, 8);
+      // Generate clean, deterministic room code and room ID
+      const rawCode = (body.roomCode || '').trim().toUpperCase();
+      const codeSuffix =
+        rawCode && /^[A-Z0-9-]{3,12}$/.test(rawCode)
+          ? rawCode.replace(/^JAM-?/, '')
+          : Math.random().toString(36).substring(2, 6).toUpperCase();
+      const roomCode = `JAM-${codeSuffix}`;
+      const roomId = `jam_${codeSuffix.toLowerCase()}`;
+
       const newRoom: JamRoom = {
         roomId,
-        roomCode: Math.random().toString(36).substring(2, 6).toUpperCase(),
+        roomCode,
         name: body.name || 'My Jam Session',
         description: body.description || '',
         genreTag: body.genreTag || 'Electronic / Indie',
@@ -615,8 +641,75 @@ async function handleOfflineFallback<T>(
 
       localRooms.unshift(newRoom);
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      // Broadcast online to all devices worldwide via retained MQTT
+      globalRoomDiscovery.broadcastRoom(newRoom);
       return { room: newRoom } as any;
     }
+  }
+
+  // 8.5. Join Room by Code (/api/rooms/join-code)
+  if (endpoint === '/api/rooms/join-code' || endpoint.startsWith('/api/rooms/join-code')) {
+    const rawCode = String(body.roomCode || '').trim();
+    if (!rawCode) {
+      throw new Error('Please enter a room code or invite link.');
+    }
+    const cleanCode = rawCode
+      .replace(/.*[?&]room=([^&]+).*/, '$1')
+      .replace(/^JAM-?/i, '')
+      .trim()
+      .toUpperCase();
+
+    const localRooms = getCleanLocalRooms();
+
+    // 1. Check local rooms
+    let matched = localRooms.find(
+      (r) =>
+        r.roomCode.replace(/^JAM-?/i, '').toUpperCase() === cleanCode ||
+        r.roomId.toLowerCase() === `jam_${cleanCode.toLowerCase()}` ||
+        r.roomId.toLowerCase() === rawCode.toLowerCase()
+    );
+
+    // 2. Check globally discovered rooms from other devices
+    if (!matched) {
+      matched = globalRoomDiscovery.getRoomByCode(cleanCode) || undefined;
+    }
+
+    // 3. Synthesize room deterministically if not yet seen so peer can join immediately
+    if (!matched) {
+      const synRoomId = `jam_${cleanCode.toLowerCase()}`;
+      matched = {
+        roomId: synRoomId,
+        roomCode: `JAM-${cleanCode}`,
+        name: `Jam Room ${cleanCode}`,
+        description: 'Synchronized live music space',
+        genreTag: 'Electronic / Indie',
+        isPrivate: false,
+        hostUserId: 'peer_host',
+        hostUsername: 'Host',
+        hostAvatarUrl: '',
+        activeMemberCount: 1,
+        createdAt: Date.now(),
+        playback: {
+          roomId: synRoomId,
+          videoId: '',
+          track: null,
+          status: 'paused',
+          positionSec: 0,
+          serverTimestamp: Date.now(),
+          initiatedByUserId: 'peer_host',
+          initiatedByUsername: 'Host',
+          historyIndex: 0,
+        },
+        queue: [],
+        members: [],
+        messages: [],
+      };
+      localRooms.push(matched);
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      globalRoomDiscovery.broadcastRoom(matched);
+    }
+
+    return { room: matched } as any;
   }
 
   // 9. Single Room & Sub-actions (/api/rooms/:roomId/...)
@@ -629,9 +722,42 @@ async function handleOfflineFallback<T>(
     const subSub = parts[3]; // 'react' or playlistId
 
     const localRooms = getCleanLocalRooms();
-    const room = localRooms.find((r) => r.roomId === targetRoomId);
+    let room = localRooms.find((r) => r.roomId === targetRoomId);
     if (!room) {
-      throw new Error(`Room not found (${targetRoomId})`);
+      room = globalRoomDiscovery.getDiscoveredRooms().find((r) => r.roomId === targetRoomId);
+    }
+    if (!room) {
+      const cleanSuffix = targetRoomId.replace(/^jam_/, '').toUpperCase();
+      room = {
+        roomId: targetRoomId,
+        roomCode: `JAM-${cleanSuffix}`,
+        name: `Jam Lounge (${cleanSuffix})`,
+        description: 'Synchronized listening space',
+        genreTag: 'Electronic / Indie',
+        isPrivate: false,
+        hostUserId: 'peer_host',
+        hostUsername: 'Host',
+        hostAvatarUrl: '',
+        activeMemberCount: 1,
+        createdAt: Date.now(),
+        playback: {
+          roomId: targetRoomId,
+          videoId: '',
+          track: null,
+          status: 'paused',
+          positionSec: 0,
+          serverTimestamp: Date.now(),
+          initiatedByUserId: 'peer_host',
+          initiatedByUsername: 'Host',
+          historyIndex: 0,
+        },
+        queue: [],
+        members: [],
+        messages: [],
+      };
+      localRooms.push(room);
+      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      globalRoomDiscovery.broadcastRoom(room);
     }
 
     if (!room.queue) room.queue = [];
