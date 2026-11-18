@@ -1,0 +1,6 @@
+{
+  "name": "JamTogether",
+  "description": "Real-time social music listening platform with synchronized YouTube playback, WebRTC voice chat, live text chat, and AWS DynamoDB + Cognito architecture.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

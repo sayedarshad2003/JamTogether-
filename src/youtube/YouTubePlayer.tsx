@@ -1,0 +1,467 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Volume2,
+  VolumeX,
+  RefreshCw,
+  Radio,
+  Lock,
+  Plus,
+} from 'lucide-react';
+import { PlaybackState, YouTubeTrack } from '../types/jam.ts';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: (() => void) | undefined;
+  }
+}
+
+interface YouTubePlayerProps {
+  playback: PlaybackState;
+  isHost: boolean;
+  onPlaybackAction: (
+    action: 'play' | 'pause' | 'seek' | 'next' | 'previous',
+    positionSec?: number,
+    allowMemberAutoAdvance?: boolean
+  ) => Promise<void>;
+  onRequestSyncCheck: () => void;
+  onOpenSearch: () => void;
+}
+
+function formatTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '00:00';
+  const total = Math.floor(sec);
+  const mins = Math.floor(total / 60);
+  const rem = total % 60;
+  return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+export function YouTubePlayer({
+  playback,
+  isHost,
+  onPlaybackAction,
+  onRequestSyncCheck,
+  onOpenSearch,
+}: YouTubePlayerProps) {
+  const playerRef = useRef<any>(null);
+  const containerIdRef = useRef(`yt-player-${Math.random().toString(36).slice(2, 8)}`);
+  const [apiReady, setApiReady] = useState<boolean>(Boolean(window.YT && window.YT.Player));
+  const [playerReady, setPlayerReady] = useState(false);
+
+  const [localPosition, setLocalPosition] = useState<number>(playback.positionSec || 0);
+  const [duration, setDuration] = useState<number>(playback.track?.durationSec || 300);
+  const [volume, setVolume] = useState<number>(85);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [syncDriftMs, setSyncDriftMs] = useState<number>(0);
+  const [isSeeking, setIsSeeking] = useState<boolean>(false);
+
+  const latestPlaybackRef = useRef<PlaybackState>(playback);
+  latestPlaybackRef.current = playback;
+
+  // Load official YouTube IFrame Player API script once
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      setApiReady(true);
+      return;
+    }
+
+    const existingScript = document.querySelector(
+      'script[src="https://www.youtube.com/iframe_api"]'
+    );
+    if (!existingScript) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+
+    const prevCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (prevCallback) prevCallback();
+      setApiReady(true);
+    };
+
+    const pollTimer = setInterval(() => {
+      if (window.YT && window.YT.Player) {
+        setApiReady(true);
+        clearInterval(pollTimer);
+      }
+    }, 250);
+
+    return () => clearInterval(pollTimer);
+  }, []);
+
+  // Calculate expected server-authoritative position at current instant
+  const getExpectedPosition = useCallback((state: PlaybackState): number => {
+    if (state.status !== 'playing') {
+      return state.positionSec;
+    }
+    const elapsedSec = Math.max(0, (Date.now() - state.serverTimestamp) / 1000);
+    return state.positionSec + elapsedSec;
+  }, []);
+
+  // Initialize YT.Player instance when API is ready
+  useEffect(() => {
+    if (!apiReady) return;
+
+    if (playerRef.current) {
+      return;
+    }
+
+    const initialExpected = getExpectedPosition(latestPlaybackRef.current);
+
+    playerRef.current = new window.YT.Player(containerIdRef.current, {
+      height: '100%',
+      width: '100%',
+      videoId: latestPlaybackRef.current.videoId,
+      playerVars: {
+        autoplay: latestPlaybackRef.current.status === 'playing' ? 1 : 0,
+        controls: 0,
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        start: Math.floor(initialExpected),
+        origin: window.location.origin,
+      },
+      events: {
+        onReady: (event: any) => {
+          setPlayerReady(true);
+          event.target.setVolume(85);
+          const d = event.target.getDuration();
+          if (d && d > 0) setDuration(d);
+
+          const expected = getExpectedPosition(latestPlaybackRef.current);
+          event.target.seekTo(expected, true);
+          if (latestPlaybackRef.current.status === 'playing') {
+            event.target.playVideo();
+          } else {
+            event.target.pauseVideo();
+          }
+        },
+        onStateChange: (event: any) => {
+          const ytState = event.data;
+          const dur = event.target.getDuration?.();
+          if (dur && dur > 0) {
+            setDuration(dur);
+          }
+          // YT.PlayerState.ENDED === 0 -> Automatically play next queued song
+          if (ytState === 0) {
+            onPlaybackAction('next', 0, true);
+          }
+        },
+      },
+    });
+
+    return () => {
+      if (playerRef.current && playerRef.current.destroy) {
+        try {
+          playerRef.current.destroy();
+        } catch {
+          // ignore
+        }
+        playerRef.current = null;
+      }
+    };
+  }, [apiReady, getExpectedPosition, onPlaybackAction]);
+
+  // React to server playback changes (video change, play/pause, seek)
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !playerReady || typeof player.getVideoData !== 'function') return;
+
+    const loadedVideoId = player.getVideoData()?.video_id;
+    const expectedPos = getExpectedPosition(playback);
+
+    if (loadedVideoId && loadedVideoId !== playback.videoId) {
+      player.loadVideoById({
+        videoId: playback.videoId,
+        startSeconds: expectedPos,
+      });
+      if (playback.status === 'paused') {
+        setTimeout(() => player.pauseVideo?.(), 300);
+      }
+      setLocalPosition(expectedPos);
+      return;
+    }
+
+    const currentPos = Number(player.getCurrentTime?.() || 0);
+    const driftSec = Math.abs(currentPos - expectedPos);
+    setSyncDriftMs(Math.round(driftSec * 1000));
+
+    if (driftSec > 2.0) {
+      player.seekTo(expectedPos, true);
+      setLocalPosition(expectedPos);
+    }
+
+    const playerState = player.getPlayerState?.();
+    if (playback.status === 'playing' && playerState !== 1 && playerState !== 3) {
+      player.playVideo?.();
+    } else if (playback.status === 'paused' && playerState === 1) {
+      player.pauseVideo?.();
+    }
+  }, [playback, playerReady, getExpectedPosition]);
+
+  // Periodic 500ms UI progress update & drift reconciliation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isSeeking) return;
+      const state = latestPlaybackRef.current;
+      const expected = getExpectedPosition(state);
+      const player = playerRef.current;
+
+      if (player && playerReady && typeof player.getCurrentTime === 'function') {
+        const actual = Number(player.getCurrentTime() || 0);
+        const dur = Number(player.getDuration?.() || state.track?.durationSec || 300);
+        if (dur > 0) setDuration(dur);
+
+        if (actual > 0) {
+          setLocalPosition(actual);
+          const drift = Math.abs(actual - expected);
+          setSyncDriftMs(Math.round(drift * 1000));
+          // Correct if drift exceeds 2.5s while playing
+          if (state.status === 'playing' && drift > 2.5) {
+            player.seekTo(expected, true);
+          }
+        } else {
+          setLocalPosition(expected);
+        }
+      } else {
+        setLocalPosition(expected);
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [playerReady, isSeeking, getExpectedPosition]);
+
+  // Periodic 10s server sync heartbeat
+  useEffect(() => {
+    const syncTimer = setInterval(() => {
+      onRequestSyncCheck();
+    }, 10000);
+    return () => clearInterval(syncTimer);
+  }, [onRequestSyncCheck]);
+
+  const handleTogglePlayPause = () => {
+    if (!isHost) return;
+    if (playback.status === 'playing') {
+      onPlaybackAction('pause', localPosition);
+    } else {
+      onPlaybackAction('play', localPosition);
+    }
+  };
+
+  const handleSeekCommit = (newSec: number) => {
+    setIsSeeking(false);
+    if (!isHost) return;
+    setLocalPosition(newSec);
+    if (playerRef.current && playerReady) {
+      playerRef.current.seekTo(newSec, true);
+    }
+    onPlaybackAction('seek', newSec);
+  };
+
+  const handleVolumeChange = (val: number) => {
+    setVolume(val);
+    setIsMuted(val === 0);
+    if (playerRef.current && playerReady) {
+      playerRef.current.setVolume(val);
+      if (val === 0) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+      }
+    }
+  };
+
+  const toggleMute = () => {
+    if (!playerRef.current || !playerReady) return;
+    if (isMuted) {
+      setIsMuted(false);
+      playerRef.current.unMute();
+      playerRef.current.setVolume(volume || 75);
+    } else {
+      setIsMuted(true);
+      playerRef.current.mute();
+    }
+  };
+
+  const handleManualResync = () => {
+    onRequestSyncCheck();
+    const expected = getExpectedPosition(playback);
+    if (playerRef.current && playerReady) {
+      playerRef.current.seekTo(expected, true);
+      if (playback.status === 'playing') {
+        playerRef.current.playVideo();
+      }
+    }
+    setLocalPosition(expected);
+  };
+
+  return (
+    <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+      {/* Embedded 16:9 YouTube IFrame Viewport */}
+      <div className="relative aspect-video w-full bg-black overflow-hidden">
+        <div id={containerIdRef.current} className="w-full h-full" />
+
+        {/* Subtle Top Overlay Bar for Sync Telemetry */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 p-4 bg-gradient-to-b from-black/80 via-black/35 to-transparent flex items-center justify-between text-xs text-white">
+          <div className="flex items-center gap-2">
+            <Radio className="w-3.5 h-3.5 text-violet-400" />
+            <span className="font-medium">
+              {playback.status === 'playing' ? 'Synchronized Live Stream' : 'Paused by Host'}
+            </span>
+            <span aria-hidden="true" className="text-white/50">
+              ·
+            </span>
+            <span className="font-mono text-white/80 tabular-nums">
+              Drift: {syncDriftMs <= 500 ? `${syncDriftMs}ms (Locked)` : `${syncDriftMs}ms`}
+            </span>
+          </div>
+
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleManualResync}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 border border-white/15 text-[11px] font-medium text-white transition-colors"
+              title="Force resynchronize with server clock"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Resync Audio</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Track Metadata & Master Transport Controls */}
+      <div className="p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+              {playback.track?.title || 'Select a song from the queue'}
+            </h2>
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <span>{playback.track?.channelTitle || 'YouTube Music'}</span>
+              <span aria-hidden="true">·</span>
+              <span>Synced by {playback.initiatedByUsername}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-all shrink-0 self-start sm:self-auto"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Song from YouTube</span>
+          </button>
+        </div>
+
+        {/* Synchronized Scrubber Bar */}
+        <div className="space-y-1.5">
+          <input
+            type="range"
+            min={0}
+            max={Math.max(duration, 1)}
+            step={1}
+            value={Math.min(localPosition, Math.max(duration, 1))}
+            disabled={!isHost}
+            onMouseDown={() => isHost && setIsSeeking(true)}
+            onTouchStart={() => isHost && setIsSeeking(true)}
+            onChange={(e) => {
+              if (!isHost) return;
+              setLocalPosition(Number(e.target.value));
+            }}
+            onMouseUp={(e) => handleSeekCommit(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleSeekCommit(Number((e.target as HTMLInputElement).value))}
+            className={`w-full h-1.5 rounded-lg appearance-none bg-slate-200 dark:bg-slate-800 accent-violet-600 ${
+              isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'
+            }`}
+          />
+          <div className="flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+            <span>{formatTime(localPosition)}</span>
+            <span>
+              {playback.track?.durationFormatted === 'LIVE' ? 'LIVE STREAM' : formatTime(duration)}
+            </span>
+          </div>
+        </div>
+
+        {/* Transport Deck */}
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!isHost}
+              onClick={() => onPlaybackAction('previous')}
+              className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title={isHost ? 'Previous Track' : 'Only the Room Host can change tracks'}
+            >
+              <SkipBack className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              disabled={!isHost}
+              onClick={handleTogglePlayPause}
+              className="p-3 rounded-xl text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+              title={isHost ? 'Play / Pause for Everyone' : 'Host controls playback'}
+            >
+              {playback.status === 'playing' ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              disabled={!isHost}
+              onClick={() => onPlaybackAction('next')}
+              className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title={isHost ? 'Skip to Next Track' : 'Only the Room Host can skip tracks'}
+            >
+              <SkipForward className="w-4 h-4" />
+            </button>
+
+            {!isHost && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 ml-2">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Host controls transport · You can queue songs</span>
+              </span>
+            )}
+          </div>
+
+          {/* Local Listener Volume Control */}
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+              aria-label="Toggle local mute"
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4 text-red-500" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={isMuted ? 0 : volume}
+              onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              className="w-24 h-1.5 rounded-lg appearance-none bg-slate-200 dark:bg-slate-800 accent-violet-600 cursor-pointer"
+              aria-label="Volume"
+            />
+            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 w-8 text-right">
+              {isMuted ? '0%' : `${volume}%`}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
