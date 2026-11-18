@@ -35,6 +35,32 @@ export function setStoredToken(token: string | null) {
   }
 }
 
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  '53242643213-b9flt3vpm3gl40rt27n4netvjb0pko1k.apps.googleusercontent.com';
+
+export function getGlobalGoogleClientId(): string {
+  try {
+    const stored = localStorage.getItem('jamtogether_admin_google_client_id');
+    if (
+      stored &&
+      stored.trim() &&
+      stored.includes('.apps.googleusercontent.com') &&
+      !stored.startsWith('GOCSPX-')
+    ) {
+      return stored.trim();
+    }
+  } catch {}
+  const envVal = ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '').trim();
+  if (
+    envVal &&
+    envVal.includes('.apps.googleusercontent.com') &&
+    !envVal.startsWith('GOCSPX-')
+  ) {
+    return envVal;
+  }
+  return DEFAULT_GOOGLE_CLIENT_ID;
+}
+
 export const STARTER_TRACKS: YouTubeTrack[] = [
   {
     videoId: 'sCNlt5nvSI8',
@@ -337,17 +363,14 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
 
   // 6. Google Config & Accounts
   if (endpoint.startsWith('/api/auth/google/config')) {
-    const storedClientId =
-      localStorage.getItem('jamtogether_admin_google_client_id') ||
-      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-      '';
+    const clientId = getGlobalGoogleClientId();
     const isValid = Boolean(
-      storedClientId &&
-      storedClientId.includes('.apps.googleusercontent.com') &&
-      !storedClientId.startsWith('GOCSPX-')
+      clientId &&
+      clientId.includes('.apps.googleusercontent.com') &&
+      !clientId.startsWith('GOCSPX-')
     );
     return {
-      clientId: storedClientId,
+      clientId,
       isConfigured: isValid,
     } as any;
   }
@@ -911,10 +934,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestInit = {}): 
       history = [];
     }
 
-    const clientId =
-      localStorage.getItem('jamtogether_admin_google_client_id') ||
-      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-      '';
+    const clientId = getGlobalGoogleClientId();
     const clientSecret =
       localStorage.getItem('jamtogether_admin_google_client_secret') || '';
 

@@ -9,7 +9,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useAuth } from './AuthContext.tsx';
-import { apiRequest } from '../aws-services/apiClient.ts';
+import { apiRequest, getGlobalGoogleClientId } from '../aws-services/apiClient.ts';
 
 declare global {
   interface Window {
@@ -74,11 +74,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
 
   // Google OAuth configuration state
   const [googleClientId, setGoogleClientId] = useState<string>(() => {
-    try {
-      const stored = localStorage.getItem('jamtogether_admin_google_client_id');
-      if (stored && stored.trim()) return stored.trim();
-    } catch {}
-    return ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '').trim();
+    return getGlobalGoogleClientId();
   });
   const [googleAccounts, setGoogleAccounts] = useState<any[]>([]);
   const [showGoogleOverlay, setShowGoogleOverlay] = useState(false);
@@ -214,12 +210,7 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
   const handleOpenGooglePopup = () => {
     setError(null);
 
-    const activeClientId = (
-      googleClientId ||
-      localStorage.getItem('jamtogether_admin_google_client_id') ||
-      (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-      ''
-    ).trim();
+    const activeClientId = (googleClientId || getGlobalGoogleClientId()).trim();
 
     // If a valid Google Client ID ending with .apps.googleusercontent.com is configured, use live Google Identity Services!
     const isValidClientId =
