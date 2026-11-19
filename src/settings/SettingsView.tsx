@@ -33,6 +33,7 @@ import { UserProfile } from '../types/jam.ts';
 import { useAuth } from '../authentication/AuthContext.tsx';
 import { useTheme } from '../themes/ThemeContext.tsx';
 import { apiRequest } from '../aws-services/apiClient.ts';
+import { compressAvatarImage } from '../utils/imageCompressor.ts';
 
 interface SettingsViewProps {
   onBackToDashboard: () => void;
@@ -152,22 +153,23 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
     setTimeout(() => setProfileMsg(null), 3000);
   };
 
-  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('Please select a valid image file (JPEG, PNG, WebP).');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setAvatarUrl(dataUrl);
+    try {
+      setProfileMsg('Optimizing image...');
+      const compressed = await compressAvatarImage(file, 180, 0.85);
+      if (compressed) {
+        setAvatarUrl(compressed);
         setProfileMsg('Photo selected! Click "Save Profile Changes" to update.');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert('Failed to process image file.');
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -179,10 +181,14 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
         .split(',')
         .map((g) => g.trim())
         .filter(Boolean);
+      let finalAvatar = avatarUrl;
+      if (finalAvatar && finalAvatar.startsWith('data:image/')) {
+        finalAvatar = await compressAvatarImage(finalAvatar, 180, 0.85);
+      }
       await updateProfile({
         displayName,
         bio,
-        avatarUrl,
+        avatarUrl: finalAvatar,
         favoriteGenres: genresArray,
       });
       setProfileMsg('Profile successfully updated.');

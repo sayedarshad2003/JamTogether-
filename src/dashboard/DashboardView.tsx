@@ -307,9 +307,21 @@ export function DashboardView({
                 </div>
 
                 <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Host: You (@{room.hostUsername})
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={room.hostAvatarUrl || user?.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
+                      alt={room.hostUsername}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+                      }}
+                      className="w-5 h-5 rounded-full object-cover border border-violet-500/40"
+                    />
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
+                      Host: You (@{room.hostUsername})
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <button

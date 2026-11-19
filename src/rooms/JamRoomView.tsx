@@ -110,6 +110,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const isSpeakingRef = useRef(isSpeaking);
   isSpeakingRef.current = isSpeaking;
 
+  const currentUserRef = useRef<UserProfile | null>(currentUser);
+  currentUserRef.current = currentUser;
+  const roomRef = useRef<JamRoom | null>(room);
+  roomRef.current = room;
+  const membersRef = useRef<RoomMember[]>(members);
+  membersRef.current = members;
+
   // Keep local user's member entry in sync with voice state
   useEffect(() => {
     if (!currentUser) return;
@@ -261,8 +268,73 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           }
           case 'room:peer_left': {
             const leftUserId = msg.payload?.userId;
-            if (leftUserId) {
-              setMembers((prev) => prev.filter((m) => m.userId !== leftUserId));
+            if (!leftUserId) break;
+
+            const currentRoom = roomRef.current;
+            setMembers((prev) => {
+              const remaining = prev.filter((m) => m.userId !== leftUserId);
+
+              // Instant Host Migration: If the leaving user was the room host, elect next available member immediately
+              if (currentRoom && currentRoom.hostUserId === leftUserId && remaining.length > 0) {
+                const nextHost = remaining[0];
+                const updatedRoom: JamRoom = {
+                  ...currentRoom,
+                  hostUserId: nextHost.userId,
+                  hostUsername: nextHost.displayName || nextHost.username,
+                  hostAvatarUrl: nextHost.avatarUrl,
+                };
+                setRoom(updatedRoom);
+
+                // If this client is the newly elected host, persist and announce to all peers immediately
+                if (activeUser.userId === nextHost.userId) {
+                  globalRoomDiscovery.broadcastRoom(updatedRoom);
+                  realtimeClientRef.current?.send({
+                    type: 'room:host_transferred',
+                    payload: {
+                      hostUserId: nextHost.userId,
+                      hostUsername: nextHost.displayName || nextHost.username,
+                      hostAvatarUrl: nextHost.avatarUrl,
+                      room: updatedRoom,
+                    },
+                  });
+                  apiRequest(`/api/rooms/${roomId}/transfer-host`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      newHostUserId: nextHost.userId,
+                      newHostUsername: nextHost.displayName || nextHost.username,
+                      newHostAvatarUrl: nextHost.avatarUrl,
+                    }),
+                  }).catch(() => {});
+                }
+
+                return remaining.map((m) => ({
+                  ...m,
+                  role: m.userId === nextHost.userId ? 'host' : 'member',
+                }));
+              }
+
+              return remaining;
+            });
+            break;
+          }
+          case 'room:member_updated': {
+            const updatedMember = msg.payload?.member as Partial<RoomMember>;
+            if (updatedMember && updatedMember.userId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === updatedMember.userId
+                    ? { ...m, ...updatedMember }
+                    : m
+                )
+              );
+              setRoom((prev) => {
+                if (!prev || prev.hostUserId !== updatedMember.userId) return prev;
+                return {
+                  ...prev,
+                  hostUsername: updatedMember.displayName || updatedMember.username || prev.hostUsername,
+                  hostAvatarUrl: updatedMember.avatarUrl || prev.hostAvatarUrl,
+                };
+              });
             }
             break;
           }
@@ -286,6 +358,19 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
                     : m
                 );
               });
+
+              // Keep host avatar & username in sync if peer is the current host
+              if (roomRef.current && peer.userId === roomRef.current.hostUserId && peer.avatarUrl) {
+                setRoom((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        hostAvatarUrl: peer.avatarUrl || prev.hostAvatarUrl,
+                        hostUsername: peer.displayName || peer.username || prev.hostUsername,
+                      }
+                    : prev
+                );
+              }
             }
             break;
           }
@@ -296,12 +381,31 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             break;
           }
           case 'room:host_transferred': {
-            const { hostUserId, hostUsername, members: updatedMembers } = msg.payload || {};
-            setRoom((prev) =>
-              prev ? { ...prev, hostUserId, hostUsername } : prev
-            );
+            const { hostUserId, hostUsername, hostAvatarUrl, members: updatedMembers, room: updatedRoom } =
+              msg.payload || {};
+            setRoom((prev) => {
+              if (updatedRoom) return updatedRoom;
+              if (!prev) return prev;
+              const newHostMember = (updatedMembers || prev.members || []).find(
+                (m: RoomMember) => m.userId === hostUserId
+              );
+              return {
+                ...prev,
+                hostUserId: hostUserId || prev.hostUserId,
+                hostUsername:
+                  hostUsername || newHostMember?.displayName || newHostMember?.username || prev.hostUsername,
+                hostAvatarUrl: hostAvatarUrl || newHostMember?.avatarUrl || prev.hostAvatarUrl,
+              };
+            });
             if (Array.isArray(updatedMembers)) {
               setMembers(updatedMembers);
+            } else if (hostUserId) {
+              setMembers((prev) =>
+                prev.map((m) => ({
+                  ...m,
+                  role: m.userId === hostUserId ? 'host' : 'member',
+                }))
+              );
             }
             break;
           }
@@ -311,8 +415,41 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
               onLeaveRoom();
               return;
             }
+            const currentRoom = roomRef.current;
             if (Array.isArray(updatedMembers)) {
               setMembers(updatedMembers);
+            } else if (targetUserId) {
+              setMembers((prev) => {
+                const remaining = prev.filter((m) => m.userId !== targetUserId);
+                // If kicked user was host, switch host instantly
+                if (currentRoom && currentRoom.hostUserId === targetUserId && remaining.length > 0) {
+                  const nextHost = remaining[0];
+                  const updatedRoom: JamRoom = {
+                    ...currentRoom,
+                    hostUserId: nextHost.userId,
+                    hostUsername: nextHost.displayName || nextHost.username,
+                    hostAvatarUrl: nextHost.avatarUrl,
+                  };
+                  setRoom(updatedRoom);
+                  if (activeUser.userId === nextHost.userId) {
+                    globalRoomDiscovery.broadcastRoom(updatedRoom);
+                    realtimeClientRef.current?.send({
+                      type: 'room:host_transferred',
+                      payload: {
+                        hostUserId: nextHost.userId,
+                        hostUsername: nextHost.displayName || nextHost.username,
+                        hostAvatarUrl: nextHost.avatarUrl,
+                        room: updatedRoom,
+                      },
+                    });
+                  }
+                  return remaining.map((m) => ({
+                    ...m,
+                    role: m.userId === nextHost.userId ? 'host' : 'member',
+                  }));
+                }
+                return remaining;
+              });
             }
             break;
           }
@@ -457,16 +594,19 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     // Presence heartbeat: keeps presence list in sync across all clients every 12 seconds
     const presenceTimer = window.setInterval(() => {
       if (isUnmounted) return;
+      const current = currentUserRef.current || activeUser;
+      const currentRoom = roomRef.current;
+      const isCurrentHost = Boolean(currentRoom && currentRoom.hostUserId === current.userId);
       client.send({
         type: 'room:presence_ping',
         payload: {
           member: {
             roomId,
-            userId: activeUser.userId,
-            username: activeUser.username,
-            displayName: activeUser.displayName,
-            avatarUrl: activeUser.avatarUrl,
-            role: 'member',
+            userId: current.userId,
+            username: current.username,
+            displayName: current.displayName,
+            avatarUrl: current.avatarUrl,
+            role: isCurrentHost ? 'host' : 'member',
             isOnline: true,
             inVoiceChat: inVoiceChatRef.current,
             isMuted: isMutedRef.current,
@@ -483,7 +623,36 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       client.close();
       realtimeClientRef.current = null;
     };
-  }, [roomId, currentUser, onLeaveRoom]);
+  }, [roomId, currentUser?.userId, onLeaveRoom]);
+
+  // Keep local and remote participant state in sync when user updates avatar or display name
+  useEffect(() => {
+    if (!currentUser) return;
+    realtimeClientRef.current?.updateUser(currentUser);
+
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.userId === currentUser.userId
+          ? {
+              ...m,
+              displayName: currentUser.displayName,
+              avatarUrl: currentUser.avatarUrl,
+            }
+          : m
+      )
+    );
+
+    setRoom((prev) => {
+      if (!prev || prev.hostUserId !== currentUser.userId) return prev;
+      const updated = {
+        ...prev,
+        hostUsername: currentUser.displayName || currentUser.username,
+        hostAvatarUrl: currentUser.avatarUrl,
+      };
+      globalRoomDiscovery.broadcastRoom(updated);
+      return updated;
+    });
+  }, [currentUser?.avatarUrl, currentUser?.displayName]);
 
   const isHost = Boolean(room && currentUser && room.hostUserId === currentUser.userId);
 
@@ -733,9 +902,12 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           payload: {
             hostUserId: res.room.hostUserId,
             hostUsername: res.room.hostUsername,
+            hostAvatarUrl: res.room.hostAvatarUrl,
+            room: res.room,
             members: res.room.members,
           },
         });
+        globalRoomDiscovery.broadcastRoom(res.room);
       }
     } catch (err) {
       setToastError((err as Error).message);
@@ -744,7 +916,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
 
   const handleKickMember = async (targetUserId: string) => {
     try {
-      const res = await apiRequest<{ members: RoomMember[] }>(
+      const res = await apiRequest<{ members: RoomMember[]; room?: JamRoom }>(
         `/api/rooms/${roomId}/remove-member`,
         {
           method: 'POST',
@@ -753,9 +925,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       );
       if (Array.isArray(res?.members)) {
         setMembers(res.members);
+        if (res.room) {
+          setRoom(res.room);
+          globalRoomDiscovery.broadcastRoom(res.room);
+        }
         realtimeClientRef.current?.send({
           type: 'room:member_kicked',
-          payload: { targetUserId, members: res.members },
+          payload: { targetUserId, members: res.members, room: res.room },
         });
       }
     } catch (err) {
@@ -778,6 +954,40 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     if (inVoiceChat) {
       leaveVoiceChat();
     }
+
+    // Instant Host Migration: If current user is host and other members are present, switch host before leaving
+    if (isHost && members.length > 1) {
+      const nextHost = members.find((m) => m.userId !== currentUser?.userId);
+      if (nextHost && room) {
+        const updatedRoom: JamRoom = {
+          ...room,
+          hostUserId: nextHost.userId,
+          hostUsername: nextHost.displayName || nextHost.username,
+          hostAvatarUrl: nextHost.avatarUrl,
+        };
+        try {
+          realtimeClientRef.current?.send({
+            type: 'room:host_transferred',
+            payload: {
+              hostUserId: nextHost.userId,
+              hostUsername: nextHost.displayName || nextHost.username,
+              hostAvatarUrl: nextHost.avatarUrl,
+              room: updatedRoom,
+            },
+          });
+          globalRoomDiscovery.broadcastRoom(updatedRoom);
+          await apiRequest(`/api/rooms/${roomId}/transfer-host`, {
+            method: 'POST',
+            body: JSON.stringify({
+              newHostUserId: nextHost.userId,
+              newHostUsername: nextHost.displayName || nextHost.username,
+              newHostAvatarUrl: nextHost.avatarUrl,
+            }),
+          });
+        } catch {}
+      }
+    }
+
     try {
       await apiRequest(`/api/rooms/${roomId}/leave`, { method: 'POST' });
     } catch {
@@ -840,6 +1050,21 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 · {room.genreTag} · {room.isPrivate ? 'Private Room' : 'Public Room'}
               </span>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs">
+                <img
+                  src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
+                  alt={room.hostUsername}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+                  }}
+                  className="w-4 h-4 rounded-full object-cover border border-violet-500/30"
+                />
+                <span className="text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                  Host: {room.hostUsername}
+                </span>
+              </div>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
               {room.description}
@@ -955,9 +1180,20 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
                   Room Participants ({members.length})
                 </h3>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Host: <strong className="text-slate-900 dark:text-white">{room.hostUsername}</strong>
-              </span>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <span>Host:</span>
+                <img
+                  src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
+                  alt={room.hostUsername}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+                  }}
+                  className="w-4 h-4 rounded-full object-cover border border-violet-500/40"
+                />
+                <strong className="text-slate-900 dark:text-white">{room.hostUsername}</strong>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext.tsx';
 import { apiRequest, getGlobalGoogleClientId } from '../aws-services/apiClient.ts';
+import { compressAvatarImage } from '../utils/imageCompressor.ts';
 
 declare global {
   interface Window {
@@ -293,22 +294,23 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
     }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file (PNG, JPG, WebP).');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setEditAvatar(dataUrl);
+    try {
+      setStatusMsg('Optimizing image...');
+      const compressed = await compressAvatarImage(file, 180, 0.85);
+      if (compressed) {
+        setEditAvatar(compressed);
         setStatusMsg('Photo selected! Click "Save Profile Changes" to save.');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setError('Failed to process image file.');
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -317,10 +319,14 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
     setStatusMsg(null);
     setSubmitting(true);
     try {
+      let finalAvatar = editAvatar || user?.avatarUrl;
+      if (finalAvatar && finalAvatar.startsWith('data:image/')) {
+        finalAvatar = await compressAvatarImage(finalAvatar, 180, 0.85);
+      }
       await updateProfile({
         displayName: editDisplayName,
         bio: editBio,
-        avatarUrl: editAvatar || user?.avatarUrl,
+        avatarUrl: finalAvatar,
       });
       setStatusMsg('Profile successfully saved.');
     } catch (err) {

@@ -987,6 +987,46 @@ async function startServer() {
       updatedAt: Date.now(),
     });
 
+    // If leaving user is the room host, instantly promote next available member to host
+    const roomRec = await dynamoStore.get(`ROOM#${roomId}`, 'METADATA');
+    if (roomRec) {
+      const room = roomRec.data as JamRoom;
+      if (room.hostUserId === user.userId) {
+        const allMembers = await dynamoStore.queryByPK(`ROOM#${roomId}`, 'MEMBER#');
+        const remaining: RoomMember[] = allMembers
+          .map((r: any) => r.data as RoomMember)
+          .filter((m: RoomMember) => m.userId !== user.userId && m.isOnline !== false);
+        if (remaining.length > 0) {
+          const nextHost = remaining[0];
+          const updatedRoom: JamRoom = {
+            ...room,
+            hostUserId: nextHost.userId,
+            hostUsername: nextHost.displayName || nextHost.username,
+            hostAvatarUrl: nextHost.avatarUrl,
+          };
+          await dynamoStore.put({
+            ...roomRec,
+            data: updatedRoom,
+            updatedAt: Date.now(),
+          });
+          const nextMemRec = await dynamoStore.get(`ROOM#${roomId}`, `MEMBER#${nextHost.userId}`);
+          if (nextMemRec) {
+            await dynamoStore.put({
+              ...nextMemRec,
+              data: { ...nextHost, role: 'host' },
+              updatedAt: Date.now(),
+            });
+          }
+          broadcastToRoom(roomId, 'room:host_transferred', {
+            hostUserId: nextHost.userId,
+            hostUsername: nextHost.displayName || nextHost.username,
+            hostAvatarUrl: nextHost.avatarUrl,
+            room: updatedRoom,
+          });
+        }
+      }
+    }
+
     const fullRoom = await getFullRoomDetails(roomId);
     broadcastToRoom(roomId, 'webrtc:user_left_vc', { userId: user.userId });
     broadcastToRoom(roomId, 'room:members_updated', { members: fullRoom?.members || [] });

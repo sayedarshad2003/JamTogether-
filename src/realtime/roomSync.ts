@@ -307,6 +307,26 @@ export class RoomRealtimeClient {
     }
   }
 
+  /**
+   * Updates the user's profile info (e.g. new avatar or display name)
+   * and announces the change to all other room participants without dropping the connection.
+   */
+  public updateUser(newUser: UserProfile) {
+    this.currentUser = newUser;
+    this.send({
+      type: 'room:member_updated',
+      payload: {
+        member: {
+          roomId: this.roomId,
+          userId: newUser.userId,
+          username: newUser.username,
+          displayName: newUser.displayName,
+          avatarUrl: newUser.avatarUrl,
+        },
+      },
+    });
+  }
+
   public close() {
     this.isDestroyed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);

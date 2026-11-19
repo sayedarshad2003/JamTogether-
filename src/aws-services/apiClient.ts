@@ -509,6 +509,33 @@ async function handleOfflineFallback<T>(
       avatarUrl: body.avatarUrl ?? user.avatarUrl,
     };
     localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+
+    // Also update any rooms where this user is host or member in local storage and broadcast
+    try {
+      const localRooms = getCleanLocalRooms();
+      let changed = false;
+      localRooms.forEach((r) => {
+        if (r.hostUserId === user.userId) {
+          r.hostAvatarUrl = user.avatarUrl;
+          r.hostUsername = user.displayName || user.username;
+          changed = true;
+          globalRoomDiscovery.broadcastRoom(r);
+        }
+        if (Array.isArray(r.members)) {
+          r.members.forEach((m) => {
+            if (m.userId === user.userId) {
+              m.avatarUrl = user.avatarUrl;
+              m.displayName = user.displayName;
+              changed = true;
+            }
+          });
+        }
+      });
+      if (changed) {
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      }
+    } catch {}
+
     return { user } as any;
   }
 
@@ -1054,18 +1081,61 @@ async function handleOfflineFallback<T>(
 
     // Host transfer (/api/rooms/:roomId/transfer-host)
     if (subResource === 'transfer-host' && method === 'POST') {
+      const newHost = room.members?.find((m) => m.userId === body.newHostUserId);
       room.hostUserId = body.newHostUserId;
+      if (newHost) {
+        room.hostUsername = newHost.displayName || newHost.username;
+        room.hostAvatarUrl = newHost.avatarUrl;
+      } else {
+        if (body.newHostUsername) room.hostUsername = body.newHostUsername;
+        if (body.newHostAvatarUrl) room.hostAvatarUrl = body.newHostAvatarUrl;
+      }
       room.members.forEach((m) => {
         m.role = m.userId === body.newHostUserId ? 'host' : 'member';
       });
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      globalRoomDiscovery.broadcastRoom(room);
       return { room } as any;
     }
 
-    // Kick member (/api/rooms/:roomId/kick)
-    if (subResource === 'kick' && method === 'POST') {
-      room.members = room.members.filter((m) => m.userId !== body.targetUserId);
+    // Leave room (/api/rooms/:roomId/leave)
+    if (subResource === 'leave' && method === 'POST') {
+      let currentUser: UserProfile | null = null;
+      try {
+        const stored = localStorage.getItem(CURRENT_USER_KEY);
+        if (stored) currentUser = JSON.parse(stored);
+      } catch {}
+      const leavingUserId = body.userId || currentUser?.userId;
+      if (leavingUserId) {
+        room.members = room.members.filter((m) => m.userId !== leavingUserId);
+        // If the leaving user was the host, switch host to next available member instantly
+        if (room.hostUserId === leavingUserId && room.members.length > 0) {
+          const nextHost = room.members[0];
+          room.hostUserId = nextHost.userId;
+          room.hostUsername = nextHost.displayName || nextHost.username;
+          room.hostAvatarUrl = nextHost.avatarUrl;
+          nextHost.role = 'host';
+        }
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        globalRoomDiscovery.broadcastRoom(room);
+      }
+      return { success: true, room, members: room.members } as any;
+    }
+
+    // Kick member (/api/rooms/:roomId/kick or /remove-member)
+    if ((subResource === 'kick' || subResource === 'remove-member') && method === 'POST') {
+      const targetId = body.targetUserId;
+      room.members = room.members.filter((m) => m.userId !== targetId);
+      // If the kicked/removed member was the host, switch host to next available member instantly
+      if (room.hostUserId === targetId && room.members.length > 0) {
+        const nextHost = room.members[0];
+        room.hostUserId = nextHost.userId;
+        room.hostUsername = nextHost.displayName || nextHost.username;
+        room.hostAvatarUrl = nextHost.avatarUrl;
+        nextHost.role = 'host';
+      }
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      globalRoomDiscovery.broadcastRoom(room);
       return { room, members: room.members } as any;
     }
 
