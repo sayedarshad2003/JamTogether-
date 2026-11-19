@@ -150,22 +150,11 @@ function JamTogetherShell() {
 
   // Subscribe to real-time multi-device global room discovery
   useEffect(() => {
-    const unsub = globalRoomDiscovery.subscribe((discoveredRooms) => {
-      if (discoveredRooms && discoveredRooms.length > 0) {
-        setRooms((prev) => {
-          const roomMap = new Map<string, JamRoom>();
-          prev.forEach((r) => roomMap.set(r.roomId, r));
-          discoveredRooms.forEach((r) => {
-            if (!r.isPrivate && !roomMap.has(r.roomId)) {
-              roomMap.set(r.roomId, r);
-            }
-          });
-          return Array.from(roomMap.values());
-        });
-      }
+    const unsub = globalRoomDiscovery.subscribe(() => {
+      loadDashboard();
     });
     return unsub;
-  }, []);
+  }, [loadDashboard]);
 
   const enterRoom = (roomId: string) => {
     setActiveRoomId(roomId);

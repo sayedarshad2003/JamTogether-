@@ -341,13 +341,25 @@ export function getCleanLocalRooms(): JamRoom[] {
         r &&
         r.roomId &&
         r.hostUserId !== 'peer_host' &&
+        r.roomId !== 'jam_test5878' &&
+        r.roomId !== 'jam_fbar' &&
+        r.roomId !== 'jam_mug4' &&
+        r.roomId !== 'jam_445s' &&
+        r.roomId !== 'jam_lcbp' &&
+        r.roomCode !== 'TEST5878' &&
+        r.roomCode !== 'JAM-TEST5878' &&
+        r.roomCode !== 'JAM-FBAR' &&
+        r.roomCode !== 'JAM-MUG4' &&
+        r.roomCode !== 'JAM-445S' &&
+        r.roomCode !== 'JAM-LCBP' &&
         !r.roomId.includes('lofi') &&
         !r.roomId.includes('synthwave') &&
         !r.roomId.includes('fkj') &&
         !r.name?.toLowerCase().includes('dummy') &&
         !r.name?.toLowerCase().includes('sample') &&
         !r.name?.toLowerCase().includes('mock') &&
-        !r.name?.toLowerCase().includes('jam lounge (')
+        !r.name?.toLowerCase().includes('jam lounge (') &&
+        !r.name?.toLowerCase().includes('indie sunset session')
     );
     if (filtered.length !== rooms.length) {
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(filtered));
@@ -370,13 +382,25 @@ if (typeof window !== 'undefined' && window.localStorage) {
             r &&
             r.roomId &&
             r.hostUserId !== 'peer_host' &&
+            r.roomId !== 'jam_test5878' &&
+            r.roomId !== 'jam_fbar' &&
+            r.roomId !== 'jam_mug4' &&
+            r.roomId !== 'jam_445s' &&
+            r.roomId !== 'jam_lcbp' &&
+            r.roomCode !== 'TEST5878' &&
+            r.roomCode !== 'JAM-TEST5878' &&
+            r.roomCode !== 'JAM-FBAR' &&
+            r.roomCode !== 'JAM-MUG4' &&
+            r.roomCode !== 'JAM-445S' &&
+            r.roomCode !== 'JAM-LCBP' &&
             !r.roomId.includes('lofi') &&
             !r.roomId.includes('synthwave') &&
             !r.roomId.includes('fkj') &&
             !r.name?.toLowerCase().includes('dummy') &&
             !r.name?.toLowerCase().includes('sample') &&
             !r.name?.toLowerCase().includes('mock') &&
-            !r.name?.toLowerCase().includes('jam lounge (')
+            !r.name?.toLowerCase().includes('jam lounge (') &&
+            !r.name?.toLowerCase().includes('indie sunset session')
         );
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(cleaned));
       }
@@ -1455,11 +1479,13 @@ async function handleOfflineFallback<T>(
       const localRooms = getCleanLocalRooms();
       deletedCount = localRooms.length;
       localRooms.forEach((r) => globalRoomDiscovery.unbroadcastRoom(r.roomId, r.roomCode));
+      globalRoomDiscovery.clearAllRooms();
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
     } else if (scope === 'all') {
       const localRooms = getCleanLocalRooms();
       deletedCount = localRooms.length;
       localRooms.forEach((r) => globalRoomDiscovery.unbroadcastRoom(r.roomId, r.roomCode));
+      globalRoomDiscovery.clearAllRooms();
       localStorage.removeItem(LOCAL_HISTORY_KEY);
       localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));

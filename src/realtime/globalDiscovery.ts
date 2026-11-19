@@ -225,6 +225,11 @@ class GlobalRoomDiscoveryService {
               { id: 'room_lofi_study', code: 'LOFI' },
               { id: 'room_synthwave', code: 'WAVE' },
               { id: 'room_lofi', code: 'LOFI' },
+              { id: 'jam_test5878', code: 'TEST5878' },
+              { id: 'jam_fbar', code: 'FBAR' },
+              { id: 'jam_mug4', code: 'MUG4' },
+              { id: 'jam_445s', code: '445S' },
+              { id: 'jam_lcbp', code: 'LCBP' },
             ];
             legacyPurgeTargets.forEach((t) => {
               this.socket?.send(makePublishPacket(`jamtogether/discovery/rooms/${t.id}`, '', true) as any);
@@ -261,6 +266,11 @@ class GlobalRoomDiscoveryService {
               roomId === 'room_fkj_masego' ||
               roomId === 'room_lofi_study' ||
               roomId === 'room_synthwave' ||
+              roomId === 'jam_test5878' ||
+              roomId === 'jam_fbar' ||
+              roomId === 'jam_mug4' ||
+              roomId === 'jam_445s' ||
+              roomId === 'jam_lcbp' ||
               roomId.includes('dummy') ||
               roomId.includes('sample')
             ) {
@@ -275,10 +285,14 @@ class GlobalRoomDiscoveryService {
                 roomData &&
                 roomData.roomId &&
                 roomData.hostUserId !== 'peer_host' &&
+                roomData.roomId !== 'jam_test5878' &&
+                roomData.roomId !== 'jam_fbar' &&
+                roomData.roomId !== 'jam_mug4' &&
                 !roomData.name?.toLowerCase().includes('dummy') &&
                 !roomData.name?.toLowerCase().includes('sample') &&
                 !roomData.name?.toLowerCase().includes('mock') &&
-                !roomData.name?.toLowerCase().includes('jam lounge (')
+                !roomData.name?.toLowerCase().includes('jam lounge (') &&
+                !roomData.name?.toLowerCase().includes('indie sunset session')
               ) {
                 this.discoveredRoomsMap.set(roomData.roomId, roomData);
                 const cleanCode = roomData.roomCode.replace(/^JAM-?/i, '').toUpperCase();
@@ -297,9 +311,19 @@ class GlobalRoomDiscoveryService {
               codeKey === 'LIVE' ||
               codeKey === 'LOFI' ||
               codeKey === 'WAVE' ||
+              codeKey === 'TEST5878' ||
+              codeKey === 'FBAR' ||
+              codeKey === 'MUG4' ||
+              codeKey === '445S' ||
+              codeKey === 'LCBP' ||
               codeKey === 'JAM-LIVE' ||
               codeKey === 'JAM-LOFI' ||
-              codeKey === 'JAM-WAVE'
+              codeKey === 'JAM-WAVE' ||
+              codeKey === 'JAM-TEST5878' ||
+              codeKey === 'JAM-FBAR' ||
+              codeKey === 'JAM-MUG4' ||
+              codeKey === 'JAM-445S' ||
+              codeKey === 'JAM-LCBP'
             ) {
               this.codeToRoomMap.delete(codeKey);
               this.notify();
@@ -453,8 +477,22 @@ class GlobalRoomDiscoveryService {
       if (roomCode) {
         const clean = roomCode.replace(/^JAM-?/i, '').toUpperCase();
         this.socket.send(makePublishPacket(`jamtogether/codes/${clean}`, '', true) as any);
+        this.socket.send(makePublishPacket(`jamtogether/codes/${roomCode.toUpperCase()}`, '', true) as any);
       }
     } catch {}
+  }
+
+  /**
+   * Clears all discovered rooms and unbroadcasts them from the MQTT broker.
+   */
+  public clearAllRooms() {
+    this.discoveredRoomsMap.forEach((room) => {
+      this.unbroadcastRoom(room.roomId, room.roomCode);
+    });
+    this.discoveredRoomsMap.clear();
+    this.codeToRoomMap.clear();
+    this.roomChatMap.clear();
+    this.notify();
   }
 }
 

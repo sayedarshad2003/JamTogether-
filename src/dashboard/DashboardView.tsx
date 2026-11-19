@@ -69,6 +69,21 @@ export function DashboardView({
   const [addingFriend, setAddingFriend] = useState(false);
   const [historyTab, setHistoryTab] = useState<'jams' | 'songs' | 'playlists'>('jams');
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+
+  const handleDeleteRoom = async (roomId: string, roomCode: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete and close this room?')) return;
+    setDeletingRoomId(roomId);
+    try {
+      await apiRequest(`/api/rooms/${roomId}`, { method: 'DELETE' });
+      await onRefreshDashboard();
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setDeletingRoomId(null);
+    }
+  };
 
   const handleAddFriend = async (usernameToInvite: string) => {
     if (!usernameToInvite.trim()) return;
@@ -296,14 +311,25 @@ export function DashboardView({
                     Host: You (@{room.hostUsername})
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => onJoinRoom(room.roomId)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 shadow-md shadow-violet-500/20 transition-all whitespace-nowrap"
-                  >
-                    <Headphones className="w-3.5 h-3.5" />
-                    <span>Enter My Jam</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={deletingRoomId === room.roomId}
+                      onClick={(e) => handleDeleteRoom(room.roomId, room.roomCode, e)}
+                      title="Delete this Jam Room"
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onJoinRoom(room.roomId)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 shadow-md shadow-violet-500/20 transition-all whitespace-nowrap"
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                      <span>Enter My Jam</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -412,14 +438,29 @@ export function DashboardView({
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onJoinRoom(room.roomId)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-slate-900 dark:bg-white dark:text-slate-900 hover:opacity-90 transition-opacity whitespace-nowrap"
-                  >
-                    <Headphones className="w-3.5 h-3.5" />
-                    <span>Join Room</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {(user?.userId === room.hostUserId ||
+                      user?.username?.toLowerCase() === room.hostUsername?.toLowerCase() ||
+                      user?.email === 'arshadsayed232@gmail.com') && (
+                      <button
+                        type="button"
+                        disabled={deletingRoomId === room.roomId}
+                        onClick={(e) => handleDeleteRoom(room.roomId, room.roomCode, e)}
+                        title="Delete Room"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onJoinRoom(room.roomId)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-slate-900 dark:bg-white dark:text-slate-900 hover:opacity-90 transition-opacity whitespace-nowrap"
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                      <span>Join Room</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -664,6 +705,19 @@ export function DashboardView({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        {(room.hostUserId === user?.userId ||
+                          room.hostUsername === user?.username ||
+                          user?.email === 'arshadsayed232@gmail.com') && (
+                          <button
+                            type="button"
+                            disabled={deletingRoomId === room.roomId}
+                            onClick={(e) => handleDeleteRoom(room.roomId, room.roomCode, e)}
+                            title="Delete Jam"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onJoinRoom(room.roomId)}
