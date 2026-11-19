@@ -29,6 +29,11 @@ import { useWebRTCVoice } from '../voice-chat/useWebRTCVoice.ts';
 import { VoiceChatPanel } from '../voice-chat/VoiceChatPanel.tsx';
 import { SharedQueuePanel } from '../playlist/SharedQueuePanel.tsx';
 import { LiveChatPanel } from '../chat/LiveChatPanel.tsx';
+import {
+  loadPersistedRoomMessages,
+  persistRoomMessages,
+  mergeChatMessages,
+} from '../chat/chatStorage.ts';
 
 interface JamRoomViewProps {
   roomId: string;
@@ -58,6 +63,8 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   currentQueueRef.current = queue;
   const currentMembersRef = useRef<RoomMember[]>([]);
   currentMembersRef.current = members;
+  const currentMessagesRef = useRef<ChatMessage[]>([]);
+  currentMessagesRef.current = messages;
 
   const sendWsMessage = useCallback(
     (type: string, payload: any = {}) => {
@@ -128,7 +135,19 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         setRoom(res.room);
         setMembers(Array.isArray(res.room.members) ? res.room.members : []);
         setQueue(Array.isArray(res.room.queue) ? res.room.queue : []);
-        setMessages(Array.isArray(res.room.messages) ? res.room.messages : []);
+        
+        // Merge chat messages across local storage, API, and retained cloud broker chat
+        const persistedMsgs = loadPersistedRoomMessages(roomId);
+        const apiMsgs = Array.isArray(res.room.messages) ? res.room.messages : [];
+        const cloudMsgs = globalRoomDiscovery.getRoomChat(roomId);
+        const initialMerged = mergeChatMessages(
+          mergeChatMessages(persistedMsgs, apiMsgs),
+          cloudMsgs
+        );
+        setMessages(initialMerged);
+        persistRoomMessages(roomId, initialMerged);
+        globalRoomDiscovery.broadcastRoomChat(roomId, initialMerged);
+
         if (res.room.playback) setPlayback(res.room.playback);
         globalRoomDiscovery.broadcastRoom(res.room);
       }
@@ -140,6 +159,22 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   useEffect(() => {
     fetchRoomState();
   }, [fetchRoomState]);
+
+  // Keep chat messages in sync with cloud MQTT retained chat history
+  useEffect(() => {
+    const unsubscribe = globalRoomDiscovery.subscribeRoomChat(roomId, (cloudMsgs) => {
+      if (Array.isArray(cloudMsgs) && cloudMsgs.length > 0) {
+        setMessages((prev) => {
+          const merged = mergeChatMessages(prev, cloudMsgs);
+          persistRoomMessages(roomId, merged);
+          return merged;
+        });
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId]);
 
   // Connect to Real-Time Room Sync Layer (Direct WS locally, MQTT WebSocket Cloud Relay on Amplify)
   useEffect(() => {
@@ -161,8 +196,14 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
               setRoom(r);
               setMembers(Array.isArray(r.members) ? r.members : []);
               setQueue(Array.isArray(r.queue) ? r.queue : []);
-              setMessages(Array.isArray(r.messages) ? r.messages : []);
               if (r.playback) setPlayback(r.playback);
+              if (Array.isArray(r.messages) && r.messages.length > 0) {
+                setMessages((prev) => {
+                  const merged = mergeChatMessages(prev, r.messages!);
+                  persistRoomMessages(roomId, merged);
+                  return merged;
+                });
+              }
             }
             break;
           }
@@ -172,13 +213,14 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
               setMembers((prev) => {
                 const exists = prev.some((m) => m.userId === joiningMember.userId);
                 const nextMembers = exists ? prev : [...prev, joiningMember];
-                // Broadcast current room state back to joining peer
+                // Broadcast current room state AND full chat messages history back to joining peer
                 realtimeClientRef.current?.send({
                   type: 'room:sync_state',
                   payload: {
                     members: nextMembers,
                     playback: currentPlaybackRef.current,
                     queue: currentQueueRef.current,
+                    messages: currentMessagesRef.current,
                   },
                 });
                 return nextMembers;
@@ -187,7 +229,12 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             break;
           }
           case 'room:sync_state': {
-            const { members: incomingMembers, playback: incomingPlayback, queue: incomingQueue } = msg.payload || {};
+            const {
+              members: incomingMembers,
+              playback: incomingPlayback,
+              queue: incomingQueue,
+              messages: incomingMessages,
+            } = msg.payload || {};
             if (Array.isArray(incomingMembers) && incomingMembers.length > 0) {
               setMembers((prev) => {
                 const map = new Map<string, RoomMember>();
@@ -201,6 +248,14 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             }
             if (Array.isArray(incomingQueue)) {
               setQueue(incomingQueue);
+            }
+            if (Array.isArray(incomingMessages) && incomingMessages.length > 0) {
+              setMessages((prev) => {
+                const merged = mergeChatMessages(prev, incomingMessages);
+                persistRoomMessages(roomId, merged);
+                globalRoomDiscovery.broadcastRoomChat(roomId, merged);
+                return merged;
+              });
             }
             break;
           }
@@ -281,20 +336,26 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           case 'chat:new_message': {
             const incoming = msg.payload?.message as ChatMessage;
             if (incoming && incoming.messageId) {
-              setMessages((prev) =>
-                prev.some((m) => m.messageId === incoming.messageId)
-                  ? prev
-                  : [...prev, incoming]
-              );
+              setMessages((prev) => {
+                const merged = mergeChatMessages(prev, [incoming]);
+                persistRoomMessages(roomId, merged);
+                globalRoomDiscovery.broadcastRoomChat(roomId, merged);
+                return merged;
+              });
             }
             break;
           }
           case 'chat:reaction_updated': {
             const { messageId, reactions } = msg.payload || {};
             if (messageId) {
-              setMessages((prev) =>
-                prev.map((m) => (m.messageId === messageId ? { ...m, reactions } : m))
-              );
+              setMessages((prev) => {
+                const merged = prev.map((m) =>
+                  m.messageId === messageId ? { ...m, reactions } : m
+                );
+                persistRoomMessages(roomId, merged);
+                globalRoomDiscovery.broadcastRoomChat(roomId, merged);
+                return merged;
+              });
             }
             break;
           }
@@ -616,11 +677,12 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         }
       );
       if (res?.message?.messageId) {
-        setMessages((prev) =>
-          prev.some((m) => m.messageId === res.message.messageId)
-            ? prev
-            : [...prev, res.message]
-        );
+        setMessages((prev) => {
+          const merged = mergeChatMessages(prev, [res.message]);
+          persistRoomMessages(roomId, merged);
+          globalRoomDiscovery.broadcastRoomChat(roomId, merged);
+          return merged;
+        });
         realtimeClientRef.current?.send({
           type: 'chat:new_message',
           payload: { message: res.message },
@@ -641,9 +703,12 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         }
       );
       if (res?.message?.messageId) {
-        setMessages((prev) =>
-          prev.map((m) => (m.messageId === messageId ? res.message : m))
-        );
+        setMessages((prev) => {
+          const merged = prev.map((m) => (m.messageId === messageId ? res.message : m));
+          persistRoomMessages(roomId, merged);
+          globalRoomDiscovery.broadcastRoomChat(roomId, merged);
+          return merged;
+        });
         realtimeClientRef.current?.send({
           type: 'chat:reaction_updated',
           payload: { messageId, reactions: res.message.reactions },

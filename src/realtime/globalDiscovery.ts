@@ -1,13 +1,14 @@
 /**
  * Global Cross-Device Room Discovery & Multi-Peer Relay Engine for JamTogether
  * 
- * Enables instant multi-device room discovery, room code resolution, and live synchronization
- * across different browsers, mobile devices, and computers worldwide on AWS Amplify static hosting.
+ * Enables instant multi-device room discovery, room code resolution, persistent room chat,
+ * and live synchronization across different browsers, mobile devices, and computers worldwide
+ * on AWS Amplify static hosting.
  *
  * Backed by EMQX Public WebSocket MQTT Broker (wss://broker.emqx.io:8084/mqtt) with Retained Messages.
  */
 
-import { JamRoom } from '../types/jam.ts';
+import { JamRoom, ChatMessage } from '../types/jam.ts';
 
 function textToBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
@@ -101,7 +102,9 @@ class GlobalRoomDiscoveryService {
   private clientId = `jam_disc_${Math.random().toString(36).substring(2, 9)}`;
   private discoveredRoomsMap = new Map<string, JamRoom>();
   private codeToRoomMap = new Map<string, JamRoom>();
+  private roomChatMap = new Map<string, ChatMessage[]>();
   private listeners = new Set<(rooms: JamRoom[]) => void>();
+  private chatListeners = new Map<string, Set<(messages: ChatMessage[]) => void>>();
   private reconnectTimer: number | null = null;
   private pingTimer: number | null = null;
 
@@ -139,6 +142,48 @@ class GlobalRoomDiscoveryService {
     return null;
   }
 
+  public getRoomChat(roomId: string): ChatMessage[] {
+    return this.roomChatMap.get(roomId) || [];
+  }
+
+  public subscribeRoomChat(roomId: string, listener: (messages: ChatMessage[]) => void): () => void {
+    if (!this.chatListeners.has(roomId)) {
+      this.chatListeners.set(roomId, new Set());
+    }
+    this.chatListeners.get(roomId)!.add(listener);
+
+    // If we already have retained chat messages for this room, notify listener immediately
+    const existing = this.roomChatMap.get(roomId);
+    if (existing && existing.length > 0) {
+      try {
+        listener(existing);
+      } catch {}
+    }
+
+    return () => {
+      const set = this.chatListeners.get(roomId);
+      if (set) {
+        set.delete(listener);
+        if (set.size === 0) {
+          this.chatListeners.delete(roomId);
+        }
+      }
+    };
+  }
+
+  private notifyChat(roomId: string, messages: ChatMessage[]) {
+    const listeners = this.chatListeners.get(roomId);
+    if (listeners) {
+      listeners.forEach((l) => {
+        try {
+          l(messages);
+        } catch (err) {
+          console.warn('Listener error in room chat discovery:', err);
+        }
+      });
+    }
+  }
+
   private notify() {
     const rooms = this.getDiscoveredRooms();
     this.listeners.forEach((l) => {
@@ -171,6 +216,8 @@ class GlobalRoomDiscoveryService {
             this.socket.send(makeSubscribePacket('jamtogether/discovery/rooms/+') as any);
             // Subscribe to room codes published with retain
             this.socket.send(makeSubscribePacket('jamtogether/codes/+') as any);
+            // Subscribe to retained room chat histories across all rooms
+            this.socket.send(makeSubscribePacket('jamtogether/chat/rooms/+') as any);
           }
         }, 300);
 
@@ -224,6 +271,26 @@ class GlobalRoomDiscoveryService {
                 }
               } catch {}
             }
+          }
+
+          // 3. Room Chat topic: jamtogether/chat/rooms/{roomId}
+          if (topic.startsWith('jamtogether/chat/rooms/')) {
+            const parts = topic.split('/');
+            const roomId = parts[parts.length - 1];
+
+            if (!payload.trim() || payload === 'null') {
+              this.roomChatMap.delete(roomId);
+              this.notifyChat(roomId, []);
+              return;
+            }
+
+            try {
+              const msgs = JSON.parse(payload) as ChatMessage[];
+              if (Array.isArray(msgs)) {
+                this.roomChatMap.set(roomId, msgs);
+                this.notifyChat(roomId, msgs);
+              }
+            } catch {}
           }
         } catch {
           // ignore malformed messages
@@ -291,10 +358,32 @@ class GlobalRoomDiscoveryService {
   }
 
   /**
+   * Broadcasts the persistent room chat history to the MQTT broker with retain = true.
+   * This guarantees that any user refreshing or joining the room immediately receives the
+   * full chat history directly from the cloud broker even if other peers are not online.
+   */
+  public broadcastRoomChat(roomId: string, messages: ChatMessage[]) {
+    if (!roomId || !Array.isArray(messages)) return;
+    const trimmed = messages.slice(-100);
+    this.roomChatMap.set(roomId, trimmed);
+
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+
+    try {
+      const payloadStr = JSON.stringify(trimmed);
+      const pkt = makePublishPacket(`jamtogether/chat/rooms/${roomId}`, payloadStr, true);
+      this.socket.send(pkt as any);
+    } catch (err) {
+      console.warn('Failed to broadcast room chat history:', err);
+    }
+  }
+
+  /**
    * Clears retained messages when a room is explicitly deleted or closed.
    */
   public unbroadcastRoom(roomId: string, roomCode?: string) {
     this.discoveredRoomsMap.delete(roomId);
+    this.roomChatMap.delete(roomId);
     if (roomCode) {
       const clean = roomCode.replace(/^JAM-?/i, '').toUpperCase();
       this.codeToRoomMap.delete(clean);
@@ -307,6 +396,9 @@ class GlobalRoomDiscoveryService {
       // Retained message with empty payload clears it in MQTT broker
       const clearPkt = makePublishPacket(`jamtogether/discovery/rooms/${roomId}`, '', true);
       this.socket.send(clearPkt as any);
+
+      const clearChatPkt = makePublishPacket(`jamtogether/chat/rooms/${roomId}`, '', true);
+      this.socket.send(clearChatPkt as any);
 
       if (roomCode) {
         const clean = roomCode.replace(/^JAM-?/i, '').toUpperCase();

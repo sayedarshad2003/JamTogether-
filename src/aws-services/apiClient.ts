@@ -9,6 +9,11 @@ import {
   UserPlaylist,
 } from '../types/jam.ts';
 import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
+import {
+  loadPersistedRoomMessages,
+  persistRoomMessages,
+  mergeChatMessages,
+} from '../chat/chatStorage.ts';
 
 const TOKEN_STORAGE_KEY = 'jamtogether_cognito_token';
 const CURRENT_USER_KEY = 'jamtogether_current_user';
@@ -783,6 +788,14 @@ async function handleOfflineFallback<T>(
     if (!room.messages) room.messages = [];
     if (!room.members) room.members = [];
 
+    // Always merge persistent chat messages for this room across storage and cloud broker
+    const persistedMsgs = loadPersistedRoomMessages(targetRoomId);
+    const cloudMsgs = globalRoomDiscovery.getRoomChat(targetRoomId);
+    room.messages = mergeChatMessages(
+      mergeChatMessages(room.messages || [], persistedMsgs),
+      cloudMsgs
+    );
+
     // GET or DELETE /api/rooms/:roomId
     if (!subResource) {
       if (method === 'DELETE') {
@@ -1010,6 +1023,8 @@ async function handleOfflineFallback<T>(
             msg.reactions[emoji] = [...list, uId];
           }
           localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+          persistRoomMessages(targetRoomId, room.messages);
+          globalRoomDiscovery.broadcastRoomChat(targetRoomId, room.messages);
           return { message: msg } as any;
         }
         return { message: room.messages[0] || {} } as any;
@@ -1034,6 +1049,9 @@ async function handleOfflineFallback<T>(
         };
         room.messages.push(msg);
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+        persistRoomMessages(targetRoomId, room.messages);
+        globalRoomDiscovery.broadcastRoom(room);
+        globalRoomDiscovery.broadcastRoomChat(targetRoomId, room.messages);
         return { message: msg } as any;
       }
       return { messages: room.messages } as any;
