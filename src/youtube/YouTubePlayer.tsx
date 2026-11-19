@@ -48,7 +48,9 @@ export function YouTubePlayer({
   onOpenSearch,
 }: YouTubePlayerProps) {
   const playerRef = useRef<any>(null);
-  const containerIdRef = useRef(`yt-player-${Math.random().toString(36).slice(2, 8)}`);
+  // Wrapper node: the YT API replaces its mount element with an iframe and destroy()
+  // removes it, so we create a fresh inner mount element every time a player is built.
+  const mountWrapperRef = useRef<HTMLDivElement | null>(null);
   const [apiReady, setApiReady] = useState<boolean>(Boolean(window.YT && window.YT.Player));
   const [playerReady, setPlayerReady] = useState(false);
 
@@ -59,9 +61,44 @@ export function YouTubePlayer({
   const [syncDriftMs, setSyncDriftMs] = useState<number>(0);
   const [isSeeking, setIsSeeking] = useState<boolean>(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
 
   const latestPlaybackRef = useRef<PlaybackState>(playback);
   latestPlaybackRef.current = playback;
+
+  // Keep volatile values in refs so the player is NOT rebuilt when they change
+  const onPlaybackActionRef = useRef(onPlaybackAction);
+  onPlaybackActionRef.current = onPlaybackAction;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+
+  // playVideo() never throws when the browser blocks autoplay, it just silently stays
+  // paused. So: try, then verify shortly after; if still not playing, fall back to
+  // muted playback (always allowed) and show the "tap to enable sound" overlay.
+  const tryPlay = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      p.playVideo?.();
+    } catch {
+      // ignore
+    }
+    window.setTimeout(() => {
+      const pl = playerRef.current;
+      if (!pl || latestPlaybackRef.current.status !== 'playing') return;
+      const st = pl.getPlayerState?.();
+      if (st !== 1 && st !== 3) {
+        try {
+          pl.mute?.();
+          setIsMuted(true);
+          pl.playVideo?.();
+        } catch {
+          // ignore
+        }
+        setAutoplayBlocked(true);
+      }
+    }, 1200);
+  }, []);
 
   // Load official YouTube IFrame Player API script once
   useEffect(() => {
@@ -114,7 +151,15 @@ export function YouTubePlayer({
 
     const initialExpected = getExpectedPosition(latestPlaybackRef.current);
 
-    playerRef.current = new window.YT.Player(containerIdRef.current, {
+    const wrapper = mountWrapperRef.current;
+    if (!wrapper) return;
+    wrapper.innerHTML = '';
+    const mountEl = document.createElement('div');
+    mountEl.style.width = '100%';
+    mountEl.style.height = '100%';
+    wrapper.appendChild(mountEl);
+
+    playerRef.current = new window.YT.Player(mountEl, {
       height: '100%',
       width: '100%',
       videoId: latestPlaybackRef.current.videoId,
@@ -130,7 +175,8 @@ export function YouTubePlayer({
       events: {
         onReady: (event: any) => {
           setPlayerReady(true);
-          event.target.setVolume(volume);
+          setPlayerError(null);
+          event.target.setVolume(volumeRef.current);
           const d = event.target.getDuration();
           if (d && d > 0) setDuration(d);
 
@@ -152,24 +198,43 @@ export function YouTubePlayer({
             }
 
             if (curState.status === 'playing') {
-              try {
-                event.target.playVideo();
-              } catch {
-                event.target.mute();
-                setIsMuted(true);
-                event.target.playVideo();
-                setAutoplayBlocked(true);
-              }
+              tryPlay();
             } else {
               event.target.pauseVideo();
             }
           }
         },
+        onAutoplayBlocked: () => {
+          try {
+            playerRef.current?.mute?.();
+            setIsMuted(true);
+            playerRef.current?.playVideo?.();
+          } catch {
+            // ignore
+          }
+          setAutoplayBlocked(true);
+        },
+        onError: (event: any) => {
+          const code = Number(event?.data);
+          if (code === 101 || code === 150) {
+            setPlayerError('The owner of this video has disabled embedding, so it cannot play here.');
+          } else if (code === 100) {
+            setPlayerError('This video is unavailable (removed or private).');
+          } else if (code === 2) {
+            setPlayerError('This video link is invalid.');
+          } else {
+            setPlayerError('The video could not be loaded. Try Resync or ask the host to pick another track.');
+          }
+        },
         onStateChange: (event: any) => {
           const ytState = event.data;
           // 1 is PLAYING, 2 is PAUSED, 3 is BUFFERING, 0 is ENDED
+          // Only clear the "tap to enable sound" overlay once audio is really on
           if (ytState === 1) {
-            setAutoplayBlocked(false);
+            setPlayerError(null);
+            if (!event.target.isMuted?.()) {
+              setAutoplayBlocked(false);
+            }
           }
           const dur = event.target.getDuration?.();
           if (dur && dur > 0) {
@@ -177,7 +242,7 @@ export function YouTubePlayer({
           }
           // YT.PlayerState.ENDED === 0 -> Automatically play next queued song
           if (ytState === 0) {
-            onPlaybackAction('next', 0, true);
+            onPlaybackActionRef.current('next', 0, true);
           }
         },
       },
@@ -190,10 +255,12 @@ export function YouTubePlayer({
         } catch {
           // ignore
         }
-        playerRef.current = null;
       }
+      playerRef.current = null;
+      setPlayerReady(false);
+      if (mountWrapperRef.current) mountWrapperRef.current.innerHTML = '';
     };
-  }, [apiReady, getExpectedPosition, onPlaybackAction, volume]);
+  }, [apiReady, getExpectedPosition, tryPlay]);
 
   // React to server playback changes (video change, play/pause, seek)
   useEffect(() => {
@@ -220,16 +287,7 @@ export function YouTubePlayer({
       if (playback.status === 'paused') {
         setTimeout(() => player.pauseVideo?.(), 300);
       } else {
-        setTimeout(() => {
-          try {
-            player.playVideo?.();
-          } catch {
-            player.mute?.();
-            setIsMuted(true);
-            player.playVideo?.();
-            setAutoplayBlocked(true);
-          }
-        }, 150);
+        setTimeout(() => tryPlay(), 150);
       }
       setLocalPosition(expectedPos);
       return;
@@ -247,19 +305,12 @@ export function YouTubePlayer({
 
       const playerState = player.getPlayerState?.();
       if (playback.status === 'playing' && playerState !== 1 && playerState !== 3) {
-        try {
-          player.playVideo?.();
-        } catch {
-          player.mute?.();
-          setIsMuted(true);
-          player.playVideo?.();
-          setAutoplayBlocked(true);
-        }
+        tryPlay();
       } else if (playback.status === 'paused' && playerState === 1) {
         player.pauseVideo?.();
       }
     }
-  }, [playback, playerReady, getExpectedPosition]);
+  }, [playback, playerReady, getExpectedPosition, tryPlay]);
 
   // Periodic 500ms UI progress update & drift reconciliation
   useEffect(() => {
@@ -361,7 +412,15 @@ export function YouTubePlayer({
     <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
       {/* Embedded 16:9 YouTube IFrame Viewport */}
       <div className="relative aspect-video w-full bg-black overflow-hidden">
-        <div id={containerIdRef.current} className="w-full h-full" />
+        <div ref={mountWrapperRef} className="w-full h-full" />
+
+        {/* Embed / load error overlay */}
+        {playerError && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 p-4 text-center space-y-2">
+            <p className="text-sm font-bold text-white">Video unavailable</p>
+            <p className="text-xs text-slate-300 max-w-sm">{playerError}</p>
+          </div>
+        )}
 
         {/* Browser Autoplay Blocked Banner */}
         {autoplayBlocked && playback.status === 'playing' && (
@@ -369,6 +428,8 @@ export function YouTubePlayer({
             onClick={() => {
               if (playerRef.current) {
                 playerRef.current.unMute?.();
+                playerRef.current.setVolume?.(volumeRef.current || 75);
+                playerRef.current.seekTo?.(getExpectedPosition(latestPlaybackRef.current), true);
                 playerRef.current.playVideo?.();
                 setIsMuted(false);
               }
