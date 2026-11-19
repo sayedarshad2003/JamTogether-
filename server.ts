@@ -2050,9 +2050,11 @@ async function startServer() {
             'webrtc:user_joined_vc',
             {
               userId: client.userId,
+              fromUserId: client.userId,
               username: client.username,
               displayName: client.displayName,
               avatarUrl: client.avatarUrl,
+              inVoiceChat: true,
               members: fullRoom?.members || [],
             },
             ws
@@ -2088,6 +2090,7 @@ async function startServer() {
           const fullRoom = await getFullRoomDetails(roomId);
           broadcastToRoom(roomId, 'webrtc:user_left_vc', {
             userId: client.userId,
+            fromUserId: client.userId,
             members: fullRoom?.members || [],
           });
         } else if (
@@ -2102,7 +2105,8 @@ async function startServer() {
           if (!targetUserId) return;
 
           sendToUserInRoom(roomId, targetUserId, type, {
-            fromUserId: client.userId,
+            fromUserId: payload?.fromUserId || client.userId,
+            targetUserId,
             fromDisplayName: client.displayName,
             fromAvatarUrl: client.avatarUrl,
             sdp,
@@ -2129,6 +2133,8 @@ async function startServer() {
 
           broadcastToRoom(roomId, 'webrtc:voice_state', {
             userId: client.userId,
+            fromUserId: client.userId,
+            inVoiceChat: true,
             isMuted,
             isSpeaking,
           });

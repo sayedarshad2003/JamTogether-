@@ -96,6 +96,30 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const handleSignalingRef = useRef(handleSignalingEvent);
   handleSignalingRef.current = handleSignalingEvent;
 
+  const inVoiceChatRef = useRef(inVoiceChat);
+  inVoiceChatRef.current = inVoiceChat;
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
+  const isSpeakingRef = useRef(isSpeaking);
+  isSpeakingRef.current = isSpeaking;
+
+  // Keep local user's member entry in sync with voice state
+  useEffect(() => {
+    if (!currentUser) return;
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.userId === currentUser.userId
+          ? {
+              ...m,
+              inVoiceChat,
+              isMuted,
+              isSpeaking,
+            }
+          : m
+      )
+    );
+  }, [currentUser, inVoiceChat, isMuted, isSpeaking]);
+
   // Fetch initial authoritative room state from API
   const fetchRoomState = useCallback(async () => {
     try {
@@ -193,7 +217,19 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
               setMembers((prev) => {
                 const exists = prev.some((m) => m.userId === peer.userId);
                 if (!exists) return [...prev, peer];
-                return prev.map((m) => (m.userId === peer.userId ? { ...m, ...peer, isOnline: true } : m));
+                return prev.map((m) =>
+                  m.userId === peer.userId
+                    ? {
+                        ...m,
+                        ...peer,
+                        isOnline: true,
+                        inVoiceChat:
+                          typeof peer.inVoiceChat === 'boolean'
+                            ? peer.inVoiceChat
+                            : m.inVoiceChat,
+                      }
+                    : m
+                );
               });
             }
             break;
@@ -262,35 +298,87 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             }
             break;
           }
-          case 'webrtc:user_joined_vc':
-          case 'webrtc:user_left_vc': {
+          case 'webrtc:join_vc':
+          case 'webrtc:user_joined_vc': {
+            const { userId, fromUserId } = msg.payload || {};
+            const joiningId = userId || fromUserId;
+            if (joiningId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === joiningId ? { ...m, inVoiceChat: true } : m
+                )
+              );
+            }
             if (Array.isArray(msg.payload?.members)) {
               setMembers(msg.payload.members);
+            }
+            handleSignalingRef.current('webrtc:user_joined_vc', msg.payload);
+            break;
+          }
+          case 'webrtc:leave_vc':
+          case 'webrtc:user_left_vc': {
+            const { userId, fromUserId } = msg.payload || {};
+            const leavingId = userId || fromUserId;
+            if (leavingId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === leavingId ? { ...m, inVoiceChat: false, isSpeaking: false } : m
+                )
+              );
+            }
+            if (Array.isArray(msg.payload?.members)) {
+              setMembers(msg.payload.members);
+            }
+            handleSignalingRef.current('webrtc:user_left_vc', msg.payload);
+            break;
+          }
+          case 'webrtc:offer': {
+            const { fromUserId } = msg.payload || {};
+            if (fromUserId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === fromUserId ? { ...m, inVoiceChat: true } : m
+                )
+              );
             }
             handleSignalingRef.current(msg.type, msg.payload);
             break;
           }
-          case 'webrtc:offer':
-          case 'webrtc:answer':
+          case 'webrtc:answer': {
+            const { fromUserId } = msg.payload || {};
+            if (fromUserId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === fromUserId ? { ...m, inVoiceChat: true } : m
+                )
+              );
+            }
+            handleSignalingRef.current(msg.type, msg.payload);
+            break;
+          }
           case 'webrtc:ice_candidate': {
             handleSignalingRef.current(msg.type, msg.payload);
             break;
           }
           case 'webrtc:voice_state': {
-            const { userId, isMuted: peerMuted, isSpeaking: peerSpeaking } = msg.payload || {};
-            setMembers((prev) =>
-              prev.map((m) =>
-                m.userId === userId
-                  ? {
-                      ...m,
-                      inVoiceChat: true,
-                      isMuted: typeof peerMuted === 'boolean' ? peerMuted : m.isMuted,
-                      isSpeaking:
-                        typeof peerSpeaking === 'boolean' ? peerSpeaking : m.isSpeaking,
-                    }
-                  : m
-              )
-            );
+            const { userId, fromUserId, isMuted: peerMuted, isSpeaking: peerSpeaking, inVoiceChat: peerInVc } =
+              msg.payload || {};
+            const targetId = userId || fromUserId;
+            if (targetId) {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.userId === targetId
+                    ? {
+                        ...m,
+                        inVoiceChat: typeof peerInVc === 'boolean' ? peerInVc : true,
+                        isMuted: typeof peerMuted === 'boolean' ? peerMuted : m.isMuted,
+                        isSpeaking:
+                          typeof peerSpeaking === 'boolean' ? peerSpeaking : m.isSpeaking,
+                      }
+                    : m
+                )
+              );
+            }
             break;
           }
         }
@@ -319,9 +407,9 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             avatarUrl: activeUser.avatarUrl,
             role: 'member',
             isOnline: true,
-            inVoiceChat: false,
-            isMuted: false,
-            isSpeaking: false,
+            inVoiceChat: inVoiceChatRef.current,
+            isMuted: isMutedRef.current,
+            isSpeaking: isSpeakingRef.current,
             joinedAt: Date.now(),
           },
         },

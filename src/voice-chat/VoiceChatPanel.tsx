@@ -47,7 +47,10 @@ export function VoiceChatPanel({
   onTestSpeakingPulse,
 }: VoiceChatPanelProps) {
   const vcParticipants = members.filter(
-    (m) => m.inVoiceChat || (m.userId === currentUser?.userId && inVoiceChat)
+    (m) =>
+      m.inVoiceChat ||
+      (m.userId === currentUser?.userId && inVoiceChat) ||
+      Boolean(peerStatuses[m.userId] && peerStatuses[m.userId] !== 'closed')
   );
 
   return (

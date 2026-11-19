@@ -15,7 +15,7 @@ export interface PeerConnectionStatus {
 function getIceServers(): RTCIceServer[] {
   const stunRaw =
     import.meta.env.VITE_STUN_SERVER_URLS ||
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302';
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478';
   const urls = stunRaw
     .split(',')
     .map((s: string) => s.trim())
@@ -48,9 +48,16 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const iceCandidateQueuesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserTimerRef = useRef<number | null>(null);
   const lastSpeakingRef = useRef<boolean>(false);
+
+  // Synchronous refs for event handlers to prevent closure state-staleness
+  const currentUserRef = useRef<UserProfile | null>(currentUser);
+  currentUserRef.current = currentUser;
+  const inVoiceChatRef = useRef<boolean>(inVoiceChat);
+  inVoiceChatRef.current = inVoiceChat;
 
   const cleanupPeer = useCallback((peerUserId: string) => {
     const pc = peerConnectionsRef.current.get(peerUserId);
@@ -64,10 +71,16 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
     }
     const audioEl = remoteAudioElementsRef.current.get(peerUserId);
     if (audioEl) {
-      audioEl.srcObject = null;
+      try {
+        audioEl.pause();
+        audioEl.srcObject = null;
+      } catch {
+        // ignore
+      }
       audioEl.remove();
       remoteAudioElementsRef.current.delete(peerUserId);
     }
+    iceCandidateQueuesRef.current.delete(peerUserId);
     setPeerStatuses((prev) => {
       const next = { ...prev };
       delete next[peerUserId];
@@ -76,9 +89,20 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
   }, []);
 
   const cleanupAllConnections = useCallback(() => {
-    for (const peerId of peerConnectionsRef.current.keys()) {
+    for (const peerId of Array.from(peerConnectionsRef.current.keys())) {
       cleanupPeer(peerId);
     }
+    for (const [peerId, audioEl] of Array.from(remoteAudioElementsRef.current.entries())) {
+      try {
+        audioEl.pause();
+        audioEl.srcObject = null;
+        audioEl.remove();
+      } catch {
+        // ignore
+      }
+      remoteAudioElementsRef.current.delete(peerId);
+    }
+    iceCandidateQueuesRef.current.clear();
     if (analyserTimerRef.current) {
       window.clearInterval(analyserTimerRef.current);
       analyserTimerRef.current = null;
@@ -116,22 +140,24 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
   const createOrGetPeerConnection = useCallback(
     (targetUserId: string): RTCPeerConnection => {
       const existing = peerConnectionsRef.current.get(targetUserId);
-      if (existing) return existing;
+      if (existing && existing.signalingState !== 'closed') return existing;
 
       const pc = new RTCPeerConnection({ iceServers: getIceServers() });
       peerConnectionsRef.current.set(targetUserId, pc);
 
+      // Attach existing local audio tracks to the new peer connection
       if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
+        localStreamRef.current.getAudioTracks().forEach((track) => {
           pc.addTrack(track, localStreamRef.current!);
         });
       }
 
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
+        if (event.candidate && currentUserRef.current) {
           sendWsMessage('webrtc:ice_candidate', {
+            fromUserId: currentUserRef.current.userId,
             targetUserId,
-            candidate: event.candidate,
+            candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
           });
         }
       };
@@ -146,25 +172,60 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
           pc.connectionState === 'closed' ||
           pc.connectionState === 'disconnected'
         ) {
-          // Automatic cleanup if peer connection fails or closes
-          if (pc.connectionState === 'closed') {
+          if (pc.connectionState === 'failed') {
+            try {
+              pc.restartIce();
+            } catch {
+              // ignore
+            }
+          } else if (pc.connectionState === 'closed') {
             cleanupPeer(targetUserId);
           }
         }
       };
 
       pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (!remoteStream) return;
+        const remoteStream =
+          event.streams && event.streams[0]
+            ? event.streams[0]
+            : new MediaStream([event.track]);
+
         let audioEl = remoteAudioElementsRef.current.get(targetUserId);
         if (!audioEl) {
           audioEl = document.createElement('audio');
+          audioEl.id = `remote-audio-${targetUserId}`;
           audioEl.autoplay = true;
           audioEl.setAttribute('playsinline', 'true');
+          audioEl.volume = 1.0;
+          audioEl.muted = false;
+          audioEl.style.display = 'none';
+          document.body.appendChild(audioEl);
           remoteAudioElementsRef.current.set(targetUserId, audioEl);
         }
+
         audioEl.srcObject = remoteStream;
-        audioEl.play().catch(() => {});
+
+        const tryPlay = () => {
+          if (!audioEl) return;
+          audioEl.play().catch((err) => {
+            console.warn(`[WebRTC] Autoplay blocked for ${targetUserId}, listening for user gesture:`, err);
+            const unlockAudio = () => {
+              audioEl?.play().catch(() => {});
+              window.removeEventListener('click', unlockAudio);
+              window.removeEventListener('keydown', unlockAudio);
+              window.removeEventListener('touchstart', unlockAudio);
+            };
+            window.addEventListener('click', unlockAudio, { once: true });
+            window.addEventListener('keydown', unlockAudio, { once: true });
+            window.addEventListener('touchstart', unlockAudio, { once: true });
+          });
+        };
+
+        tryPlay();
+
+        event.track.onunmute = () => {
+          tryPlay();
+        };
       };
 
       return pc;
@@ -178,6 +239,9 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioCtx) return;
         const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
         audioContextRef.current = ctx;
 
         const source = ctx.createMediaStreamSource(stream);
@@ -189,11 +253,20 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
         analyserTimerRef.current = window.setInterval(() => {
           if (!localStreamRef.current) return;
           const audioTrack = localStreamRef.current.getAudioTracks()[0];
+          const activeUser = currentUserRef.current;
           if (!audioTrack || !audioTrack.enabled) {
             if (lastSpeakingRef.current) {
               lastSpeakingRef.current = false;
               setIsSpeaking(false);
-              sendWsMessage('webrtc:voice_state', { isMuted: true, isSpeaking: false });
+              if (activeUser) {
+                sendWsMessage('webrtc:voice_state', {
+                  userId: activeUser.userId,
+                  fromUserId: activeUser.userId,
+                  inVoiceChat: true,
+                  isMuted: true,
+                  isSpeaking: false,
+                });
+              }
             }
             return;
           }
@@ -209,10 +282,15 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
           if (speakingNow !== lastSpeakingRef.current) {
             lastSpeakingRef.current = speakingNow;
             setIsSpeaking(speakingNow);
-            sendWsMessage('webrtc:voice_state', {
-              isMuted: false,
-              isSpeaking: speakingNow,
-            });
+            if (activeUser) {
+              sendWsMessage('webrtc:voice_state', {
+                userId: activeUser.userId,
+                fromUserId: activeUser.userId,
+                inVoiceChat: true,
+                isMuted: false,
+                isSpeaking: speakingNow,
+              });
+            }
           }
         }, 220);
       } catch {
@@ -233,12 +311,24 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
         stream = await navigator.mediaDevices.getUserMedia({
           audio:
             selectedDeviceId && selectedDeviceId !== 'default'
-              ? { deviceId: { exact: selectedDeviceId }, echoCancellation: true, noiseSuppression: true }
-              : { echoCancellation: true, noiseSuppression: true },
+              ? {
+                  deviceId: { exact: selectedDeviceId },
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                }
+              : {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                },
           video: false,
         });
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+        });
       } catch (micErr) {
-        // Fallback silent Web Audio MediaStreamDestination if hardware mic is absent in preview iframe
+        console.warn('Microphone hardware not available or denied, using silent fallback stream:', micErr);
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         const ctx = new AudioCtx();
         const dest = ctx.createMediaStreamDestination();
@@ -249,15 +339,39 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
       }
 
       localStreamRef.current = stream;
+
+      // Attach audio track to any existing peer connections
+      for (const [, pc] of peerConnectionsRef.current.entries()) {
+        const senders = pc.getSenders();
+        stream.getAudioTracks().forEach((track) => {
+          const alreadyAdded = senders.some((s) => s.track === track);
+          if (!alreadyAdded) {
+            pc.addTrack(track, stream);
+          }
+        });
+      }
+
+      inVoiceChatRef.current = true;
       setInVoiceChat(true);
       setIsMuted(false);
       setConnectionStatus('connected');
 
       startVoiceActivityDetector(stream);
 
-      sendWsMessage('webrtc:join_vc', {
+      // Announce to both server and cloud-relay peers
+      const joinPayload = {
+        userId: currentUser.userId,
+        fromUserId: currentUser.userId,
+        username: currentUser.username,
+        displayName: currentUser.displayName,
+        avatarUrl: currentUser.avatarUrl,
+        inVoiceChat: true,
         isMuted: false,
-      });
+        isSpeaking: false,
+      };
+
+      sendWsMessage('webrtc:join_vc', joinPayload);
+      sendWsMessage('webrtc:user_joined_vc', joinPayload);
     } catch (err) {
       setConnectionStatus('permission_error');
       setPermissionNotice((err as Error).message || 'Could not access microphone.');
@@ -265,13 +379,24 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
   }, [currentUser, selectedDeviceId, sendWsMessage, startVoiceActivityDetector]);
 
   const leaveVoiceChat = useCallback(() => {
+    const activeUser = currentUserRef.current;
     cleanupAllConnections();
+    inVoiceChatRef.current = false;
     setInVoiceChat(false);
     setIsMuted(false);
     setIsSpeaking(false);
     setConnectionStatus('disconnected');
     setPermissionNotice(null);
-    sendWsMessage('webrtc:leave_vc', {});
+
+    if (activeUser) {
+      const leavePayload = {
+        userId: activeUser.userId,
+        fromUserId: activeUser.userId,
+        inVoiceChat: false,
+      };
+      sendWsMessage('webrtc:leave_vc', leavePayload);
+      sendWsMessage('webrtc:user_left_vc', leavePayload);
+    }
   }, [cleanupAllConnections, sendWsMessage]);
 
   const toggleMuteMic = useCallback(() => {
@@ -289,89 +414,157 @@ export function useWebRTCVoice({ roomId, currentUser, sendWsMessage }: UseWebRTC
       lastSpeakingRef.current = false;
     }
 
-    sendWsMessage('webrtc:voice_state', {
-      isMuted: nextMuted,
-      isSpeaking: false,
-    });
+    const activeUser = currentUserRef.current;
+    if (activeUser) {
+      sendWsMessage('webrtc:voice_state', {
+        userId: activeUser.userId,
+        fromUserId: activeUser.userId,
+        inVoiceChat: true,
+        isMuted: nextMuted,
+        isSpeaking: false,
+      });
+    }
   }, [isMuted, sendWsMessage]);
 
-  // Simulate speaking pulse button for users without physical mic hardware
+  // Simulate speaking pulse button for testing or users without physical mic hardware
   const triggerTestSpeakingPulse = useCallback(() => {
-    if (!inVoiceChat || isMuted) return;
+    const activeUser = currentUserRef.current;
+    if (!inVoiceChatRef.current || isMuted || !activeUser) return;
     setIsSpeaking(true);
-    sendWsMessage('webrtc:voice_state', { isMuted: false, isSpeaking: true });
+    sendWsMessage('webrtc:voice_state', {
+      userId: activeUser.userId,
+      fromUserId: activeUser.userId,
+      inVoiceChat: true,
+      isMuted: false,
+      isSpeaking: true,
+    });
     setTimeout(() => {
       setIsSpeaking(false);
-      sendWsMessage('webrtc:voice_state', { isMuted: false, isSpeaking: false });
+      sendWsMessage('webrtc:voice_state', {
+        userId: activeUser.userId,
+        fromUserId: activeUser.userId,
+        inVoiceChat: true,
+        isMuted: false,
+        isSpeaking: false,
+      });
     }, 2200);
-  }, [inVoiceChat, isMuted, sendWsMessage]);
+  }, [isMuted, sendWsMessage]);
 
-  // Handle incoming WebRTC signaling events from WebSocket
+  // Handle incoming WebRTC signaling events from WebSocket or Cloud Relay
   const handleSignalingEvent = useCallback(
     async (type: string, payload: any) => {
-      if (!inVoiceChat || !currentUser) return;
+      const activeUser = currentUserRef.current;
+      if (!inVoiceChatRef.current || !activeUser) return;
 
-      if (type === 'webrtc:user_joined_vc') {
-        const newPeerId = payload?.userId;
-        if (!newPeerId || newPeerId === currentUser.userId) return;
+      // Filter targeted signaling messages
+      if (payload?.targetUserId && payload.targetUserId !== activeUser.userId) {
+        return;
+      }
+
+      if (type === 'webrtc:user_joined_vc' || type === 'webrtc:join_vc') {
+        const newPeerId = payload?.userId || payload?.fromUserId;
+        if (!newPeerId || newPeerId === activeUser.userId) return;
 
         try {
           const pc = createOrGetPeerConnection(newPeerId);
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          sendWsMessage('webrtc:offer', {
-            targetUserId: newPeerId,
-            sdp: pc.localDescription,
-          });
+          // Only create offer if pc is in stable state to prevent glare
+          if (pc.signalingState === 'stable') {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            sendWsMessage('webrtc:offer', {
+              fromUserId: activeUser.userId,
+              targetUserId: newPeerId,
+              sdp: pc.localDescription,
+            });
+          }
         } catch (e) {
-          console.warn('WebRTC offer creation error:', e);
+          console.warn('[WebRTC] Offer creation error:', e);
         }
       } else if (type === 'webrtc:offer') {
         const { fromUserId, sdp } = payload || {};
-        if (!fromUserId || !sdp) return;
+        if (!fromUserId || !sdp || fromUserId === activeUser.userId) return;
 
         try {
           const pc = createOrGetPeerConnection(fromUserId);
+          // Glare handling: if not stable, polite peer rolls back to accept offer
+          if (pc.signalingState !== 'stable') {
+            const isPolite = activeUser.userId < fromUserId;
+            if (!isPolite) {
+              console.warn('[WebRTC] Impolite peer ignoring colliding offer from', fromUserId);
+              return;
+            }
+            await pc.setLocalDescription({ type: 'rollback' } as any);
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+          // Drain queued ICE candidates received before remote description
+          const queued = iceCandidateQueuesRef.current.get(fromUserId) || [];
+          iceCandidateQueuesRef.current.delete(fromUserId);
+          for (const cand of queued) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (err) {
+              console.warn('[WebRTC] Error adding queued ICE candidate:', err);
+            }
+          }
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           sendWsMessage('webrtc:answer', {
+            fromUserId: activeUser.userId,
             targetUserId: fromUserId,
             sdp: pc.localDescription,
           });
         } catch (e) {
-          console.warn('WebRTC answer error:', e);
+          console.warn('[WebRTC] Answer error:', e);
         }
       } else if (type === 'webrtc:answer') {
         const { fromUserId, sdp } = payload || {};
-        if (!fromUserId || !sdp) return;
+        if (!fromUserId || !sdp || fromUserId === activeUser.userId) return;
         const pc = peerConnectionsRef.current.get(fromUserId);
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+            // Drain queued ICE candidates received before remote description
+            const queued = iceCandidateQueuesRef.current.get(fromUserId) || [];
+            iceCandidateQueuesRef.current.delete(fromUserId);
+            for (const cand of queued) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              } catch (err) {
+                console.warn('[WebRTC] Error adding queued candidate on answer:', err);
+              }
+            }
           } catch (e) {
-            console.warn('WebRTC setRemoteDescription error:', e);
+            console.warn('[WebRTC] setRemoteDescription answer error:', e);
           }
         }
       } else if (type === 'webrtc:ice_candidate') {
         const { fromUserId, candidate } = payload || {};
-        if (!fromUserId || !candidate) return;
+        if (!fromUserId || !candidate || fromUserId === activeUser.userId) return;
         const pc = peerConnectionsRef.current.get(fromUserId);
-        if (pc) {
+        if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
+          // Queue candidate until remote description is set
+          const q = iceCandidateQueuesRef.current.get(fromUserId) || [];
+          q.push(candidate);
+          iceCandidateQueuesRef.current.set(fromUserId, q);
+        } else {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
           } catch (e) {
-            // ignore benign candidate race
+            console.warn('[WebRTC] addIceCandidate error:', e);
           }
         }
-      } else if (type === 'webrtc:user_left_vc') {
-        const leftUserId = payload?.userId;
-        if (leftUserId) {
+      } else if (type === 'webrtc:user_left_vc' || type === 'webrtc:leave_vc') {
+        const leftUserId = payload?.userId || payload?.fromUserId;
+        if (leftUserId && leftUserId !== activeUser.userId) {
           cleanupPeer(leftUserId);
         }
       }
     },
-    [cleanupPeer, createOrGetPeerConnection, currentUser, inVoiceChat, sendWsMessage]
+    [cleanupPeer, createOrGetPeerConnection, sendWsMessage]
   );
 
   // Clean up on unmount or room change
