@@ -257,8 +257,13 @@ function JamTogetherShell() {
             {user ? (
               <span className="flex items-center gap-1.5">
                 <img
-                  src={user.avatarUrl}
+                  src={user.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`}
                   alt={user.displayName}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`;
+                  }}
                   className="w-5 h-5 rounded-full object-cover border border-violet-500/40"
                 />
                 <span className="font-semibold text-slate-800 dark:text-slate-200">

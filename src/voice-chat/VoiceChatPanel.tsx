@@ -187,9 +187,13 @@ export function VoiceChatPanel({
                     }`}
                   >
                     <img
-                      src={participant.avatarUrl}
+                      src={participant.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(participant.displayName || 'Participant')}`}
                       alt={participant.displayName}
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(participant.displayName || 'Participant')}`;
+                      }}
                       className="w-full h-full rounded-full object-cover"
                     />
                   </div>

@@ -25,6 +25,7 @@ import {
   UserPlaylist,
 } from '../types/jam.ts';
 import { apiRequest } from '../aws-services/apiClient.ts';
+import heroImage from '../assets/images/hero_listening_lounge_1794736637703.jpg';
 
 interface DashboardViewProps {
   user: UserProfile | null;
@@ -176,9 +177,13 @@ export function DashboardView({
 
         <div className="lg:col-span-5 relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 min-h-[260px] bg-slate-900">
           <img
-            src="/src/assets/images/hero_listening_lounge_1794736637703.jpg"
+            src={heroImage}
             alt="Analog hi-fi listening lounge with warm studio monitors"
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = '/images/hero_listening_lounge_1794736637703.jpg';
+            }}
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent flex flex-col justify-end p-6">
@@ -393,10 +398,14 @@ export function DashboardView({
                 <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-2 min-w-0">
                     <img
-                      src={room.hostAvatarUrl}
+                      src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
                       alt={room.hostUsername}
                       referrerPolicy="no-referrer"
-                      className="w-6 h-6 rounded-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+                      }}
+                      className="w-6 h-6 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
                     />
                     <span className="text-xs text-slate-600 dark:text-slate-400 truncate">
                       Host: {room.hostUsername}
@@ -504,9 +513,13 @@ export function DashboardView({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={friend.friendAvatarUrl}
+                      src={friend.friendAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(friend.friendDisplayName || friend.friendUsername || 'Friend')}`}
                       alt={friend.friendDisplayName}
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(friend.friendDisplayName || friend.friendUsername || 'Friend')}`;
+                      }}
                       className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
                     />
                     <div className="min-w-0">

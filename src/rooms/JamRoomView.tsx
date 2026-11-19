@@ -391,7 +391,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
 
   const handleAddTrackToQueue = async (track: YouTubeTrack) => {
     try {
-      const res = await apiRequest<{ queue: QueueItem[] }>(`/api/rooms/${roomId}/queue`, {
+      const res = await apiRequest<{ queue: QueueItem[]; playback?: PlaybackState }>(`/api/rooms/${roomId}/queue`, {
         method: 'POST',
         body: JSON.stringify({ track }),
       });
@@ -400,6 +400,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         realtimeClientRef.current?.send({
           type: 'queue:updated',
           payload: { queue: res.queue },
+        });
+      }
+      if (res?.playback) {
+        setPlayback(res.playback);
+        realtimeClientRef.current?.send({
+          type: 'playback:updated',
+          payload: { playback: res.playback },
         });
       }
     } catch (err) {
@@ -415,6 +422,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     try {
       const res = await apiRequest<{
         queue: QueueItem[];
+        playback?: PlaybackState;
         addedCount: number;
         playlistTitle: string;
       }>(`/api/rooms/${roomId}/queue/playlist`, {
@@ -428,6 +436,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           payload: { queue: res.queue },
         });
       }
+      if (res?.playback) {
+        setPlayback(res.playback);
+        realtimeClientRef.current?.send({
+          type: 'playback:updated',
+          payload: { playback: res.playback },
+        });
+      }
       setToastError(null);
     } catch (err) {
       setToastError((err as Error).message);
@@ -438,6 +453,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     try {
       const res = await apiRequest<{
         queue: QueueItem[];
+        playback?: PlaybackState;
         addedCount: number;
         playlistName: string;
       }>(`/api/rooms/${roomId}/queue/user-playlist/${playlistId}`, {
@@ -448,6 +464,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         realtimeClientRef.current?.send({
           type: 'queue:updated',
           payload: { queue: res.queue },
+        });
+      }
+      if (res?.playback) {
+        setPlayback(res.playback);
+        realtimeClientRef.current?.send({
+          type: 'playback:updated',
+          payload: { playback: res.playback },
         });
       }
       setToastError(null);
@@ -794,9 +817,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <img
-                        src={member.avatarUrl}
+                        src={member.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`}
                         alt={member.displayName}
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`;
+                        }}
                         className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
                       />
                       <div className="min-w-0">

@@ -873,6 +873,7 @@ async function handleOfflineFallback<T>(
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return {
           queue: room.queue,
+          playback: room.playback,
           addedCount: addedItems.length,
           playlistTitle: body.playlistName || 'Imported Playlist',
         } as any;
@@ -916,6 +917,7 @@ async function handleOfflineFallback<T>(
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         return {
           queue: room.queue,
+          playback: room.playback,
           addedCount: addedItems.length,
           playlistName: pl?.name || 'User Playlist',
         } as any;
@@ -936,7 +938,7 @@ async function handleOfflineFallback<T>(
             localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
           }
         }
-        return { queue: room.queue } as any;
+        return { queue: room.queue, playback: room.playback } as any;
       }
 
       if (method === 'DELETE') {
@@ -952,12 +954,12 @@ async function handleOfflineFallback<T>(
         }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
         globalRoomDiscovery.broadcastRoom(room);
-        return { queue: room.queue } as any;
+        return { queue: room.queue, playback: room.playback } as any;
       }
 
       if (method === 'POST') {
         if (!body.track) {
-          return { queue: room.queue } as any;
+          return { queue: room.queue, playback: room.playback } as any;
         }
         let currentUser: UserProfile | null = null;
         try {
@@ -983,7 +985,7 @@ async function handleOfflineFallback<T>(
           room.playback.serverTimestamp = Date.now();
         }
         localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
-        return { queue: room.queue } as any;
+        return { queue: room.queue, playback: room.playback } as any;
       }
 
       return { queue: room.queue } as any;

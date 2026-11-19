@@ -75,9 +75,13 @@ export function LiveChatPanel({
           return (
             <div key={msg.messageId} className="group flex items-start gap-2.5">
               <img
-                src={msg.avatarUrl}
+                src={msg.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(msg.displayName || msg.username || 'user')}`}
                 alt={msg.displayName}
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(msg.displayName || msg.username || 'user')}`;
+                }}
                 className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5 border border-slate-200 dark:border-slate-700"
               />
               <div className="min-w-0 flex-1">

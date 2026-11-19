@@ -58,6 +58,7 @@ export function YouTubePlayer({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [syncDriftMs, setSyncDriftMs] = useState<number>(0);
   const [isSeeking, setIsSeeking] = useState<boolean>(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
 
   const latestPlaybackRef = useRef<PlaybackState>(playback);
   latestPlaybackRef.current = playback;
@@ -129,20 +130,47 @@ export function YouTubePlayer({
       events: {
         onReady: (event: any) => {
           setPlayerReady(true);
-          event.target.setVolume(85);
+          event.target.setVolume(volume);
           const d = event.target.getDuration();
           if (d && d > 0) setDuration(d);
 
-          const expected = getExpectedPosition(latestPlaybackRef.current);
-          event.target.seekTo(expected, true);
-          if (latestPlaybackRef.current.status === 'playing') {
-            event.target.playVideo();
-          } else {
-            event.target.pauseVideo();
+          const curState = latestPlaybackRef.current;
+          const targetVideoId = curState.videoId;
+          const expected = getExpectedPosition(curState);
+
+          if (targetVideoId) {
+            const loaded = event.target.getVideoData?.()?.video_id;
+            if (loaded !== targetVideoId) {
+              if (typeof event.target.loadVideoById === 'function') {
+                event.target.loadVideoById({
+                  videoId: targetVideoId,
+                  startSeconds: expected,
+                });
+              }
+            } else {
+              event.target.seekTo(expected, true);
+            }
+
+            if (curState.status === 'playing') {
+              try {
+                event.target.playVideo();
+              } catch {
+                event.target.mute();
+                setIsMuted(true);
+                event.target.playVideo();
+                setAutoplayBlocked(true);
+              }
+            } else {
+              event.target.pauseVideo();
+            }
           }
         },
         onStateChange: (event: any) => {
           const ytState = event.data;
+          // 1 is PLAYING, 2 is PAUSED, 3 is BUFFERING, 0 is ENDED
+          if (ytState === 1) {
+            setAutoplayBlocked(false);
+          }
           const dur = event.target.getDuration?.();
           if (dur && dur > 0) {
             setDuration(dur);
@@ -165,42 +193,71 @@ export function YouTubePlayer({
         playerRef.current = null;
       }
     };
-  }, [apiReady, getExpectedPosition, onPlaybackAction]);
+  }, [apiReady, getExpectedPosition, onPlaybackAction, volume]);
 
   // React to server playback changes (video change, play/pause, seek)
   useEffect(() => {
     const player = playerRef.current;
-    if (!player || !playerReady || typeof player.getVideoData !== 'function') return;
+    if (!player || !playerReady) return;
 
-    const loadedVideoId = player.getVideoData()?.video_id;
+    const loadedVideoId = typeof player.getVideoData === 'function' ? player.getVideoData()?.video_id : null;
     const expectedPos = getExpectedPosition(playback);
 
-    if (loadedVideoId && loadedVideoId !== playback.videoId) {
-      player.loadVideoById({
-        videoId: playback.videoId,
-        startSeconds: expectedPos,
-      });
+    // If there is a video in playback and it differs from currently loaded video:
+    if (playback.videoId && loadedVideoId !== playback.videoId) {
+      if (typeof player.loadVideoById === 'function') {
+        player.loadVideoById({
+          videoId: playback.videoId,
+          startSeconds: expectedPos,
+        });
+      } else if (typeof player.cueVideoById === 'function') {
+        player.cueVideoById({
+          videoId: playback.videoId,
+          startSeconds: expectedPos,
+        });
+      }
+
       if (playback.status === 'paused') {
         setTimeout(() => player.pauseVideo?.(), 300);
+      } else {
+        setTimeout(() => {
+          try {
+            player.playVideo?.();
+          } catch {
+            player.mute?.();
+            setIsMuted(true);
+            player.playVideo?.();
+            setAutoplayBlocked(true);
+          }
+        }, 150);
       }
       setLocalPosition(expectedPos);
       return;
     }
 
-    const currentPos = Number(player.getCurrentTime?.() || 0);
-    const driftSec = Math.abs(currentPos - expectedPos);
-    setSyncDriftMs(Math.round(driftSec * 1000));
+    if (playback.videoId && typeof player.getCurrentTime === 'function') {
+      const currentPos = Number(player.getCurrentTime() || 0);
+      const driftSec = Math.abs(currentPos - expectedPos);
+      setSyncDriftMs(Math.round(driftSec * 1000));
 
-    if (driftSec > 2.0) {
-      player.seekTo(expectedPos, true);
-      setLocalPosition(expectedPos);
-    }
+      if (driftSec > 2.0) {
+        player.seekTo(expectedPos, true);
+        setLocalPosition(expectedPos);
+      }
 
-    const playerState = player.getPlayerState?.();
-    if (playback.status === 'playing' && playerState !== 1 && playerState !== 3) {
-      player.playVideo?.();
-    } else if (playback.status === 'paused' && playerState === 1) {
-      player.pauseVideo?.();
+      const playerState = player.getPlayerState?.();
+      if (playback.status === 'playing' && playerState !== 1 && playerState !== 3) {
+        try {
+          player.playVideo?.();
+        } catch {
+          player.mute?.();
+          setIsMuted(true);
+          player.playVideo?.();
+          setAutoplayBlocked(true);
+        }
+      } else if (playback.status === 'paused' && playerState === 1) {
+        player.pauseVideo?.();
+      }
     }
   }, [playback, playerReady, getExpectedPosition]);
 
@@ -305,6 +362,29 @@ export function YouTubePlayer({
       {/* Embedded 16:9 YouTube IFrame Viewport */}
       <div className="relative aspect-video w-full bg-black overflow-hidden">
         <div id={containerIdRef.current} className="w-full h-full" />
+
+        {/* Browser Autoplay Blocked Banner */}
+        {autoplayBlocked && playback.status === 'playing' && (
+          <div
+            onClick={() => {
+              if (playerRef.current) {
+                playerRef.current.unMute?.();
+                playerRef.current.playVideo?.();
+                setIsMuted(false);
+              }
+              setAutoplayBlocked(false);
+            }}
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm cursor-pointer p-4 space-y-3 animate-in fade-in"
+          >
+            <div className="w-16 h-16 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center shadow-2xl transition-transform hover:scale-105">
+              <Play className="w-8 h-8 ml-1 fill-current" />
+            </div>
+            <div className="text-center text-white space-y-1">
+              <p className="text-sm font-bold">Host is playing live in this room!</p>
+              <p className="text-xs text-violet-300">Click anywhere to start video and listen with friends</p>
+            </div>
+          </div>
+        )}
 
         {/* Subtle Top Overlay Bar for Sync Telemetry */}
         <div className="pointer-events-none absolute inset-x-0 top-0 p-4 bg-gradient-to-b from-black/80 via-black/35 to-transparent flex items-center justify-between text-xs text-white">

@@ -26,6 +26,8 @@ import {
   ListMusic,
   Activity,
   CheckCircle2,
+  Upload,
+  Camera,
 } from 'lucide-react';
 import { UserProfile } from '../types/jam.ts';
 import { useAuth } from '../authentication/AuthContext.tsx';
@@ -148,6 +150,24 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
     localStorage.setItem('jamtogether_autoplay', String(autoPlayNext));
     setProfileMsg('Playback preferences updated.');
     setTimeout(() => setProfileMsg(null), 3000);
+  };
+
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file (JPEG, PNG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setAvatarUrl(dataUrl);
+        setProfileMsg('Photo selected! Click "Save Profile Changes" to update.');
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -654,24 +674,46 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
 
               {user ? (
                 <form onSubmit={handleSaveProfile} className="space-y-4">
-                  <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800">
-                    <img
-                      src={avatarUrl || user.avatarUrl}
-                      alt={displayName}
-                      className="w-14 h-14 rounded-full object-cover border-2 border-violet-500/40"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                          {displayName || user.displayName}
-                        </h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
-                          {user.authProvider === 'google' ? 'Google Account' : 'Guest Session'}
-                        </span>
+                  <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="relative">
+                        <img
+                          src={avatarUrl || user.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(displayName || user.displayName || 'user')}`}
+                          alt={displayName}
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(displayName || user.displayName || 'user')}`;
+                          }}
+                          className="w-16 h-16 rounded-full object-cover border-2 border-violet-500/40 shadow-sm"
+                        />
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        @{user.username} · {user.email}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {displayName || user.displayName}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
+                            {user.authProvider === 'google' ? 'Google Account' : 'Guest Session'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          @{user.username} · {user.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-all shadow-sm">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleAvatarFileUpload}
+                        />
+                      </label>
                     </div>
                   </div>
 

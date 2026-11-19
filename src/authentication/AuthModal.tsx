@@ -7,6 +7,7 @@ import {
   Check,
   KeyRound,
   AlertCircle,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from './AuthContext.tsx';
 import { apiRequest, getGlobalGoogleClientId } from '../aws-services/apiClient.ts';
@@ -292,6 +293,24 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
     }
   };
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file (PNG, JPG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setEditAvatar(dataUrl);
+        setStatusMsg('Photo selected! Click "Save Profile Changes" to save.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -531,31 +550,49 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
           {/* PROFILE TAB */}
           {tab === 'profile' && user && (
             <div className="space-y-5">
-              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800">
-                <img
-                  src={user.avatarUrl}
-                  alt={user.displayName}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-violet-500/30"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {user.displayName}
-                    </h3>
-                    {user.isGuest ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                        Guest
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                        Google
-                      </span>
-                    )}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <img
+                    src={editAvatar || user.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`}
+                    alt={user.displayName}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`;
+                    }}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-violet-500/30 shrink-0 shadow-sm"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                        {user.displayName}
+                      </h3>
+                      {user.isGuest ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          Guest
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                          Google
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      @{user.username} · {user.email}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                    @{user.username} · {user.email}
-                  </p>
                 </div>
+
+                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-all shadow-sm">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                </label>
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-3">
@@ -659,6 +696,11 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
                       `https://api.dicebear.com/7.x/bottts/svg?seed=${acc.email}`
                     }
                     alt={acc.displayName || acc.email}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${acc.email}`;
+                    }}
                     className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                   />
                   <div className="min-w-0 flex-1">
