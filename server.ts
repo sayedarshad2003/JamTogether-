@@ -726,15 +726,15 @@ async function startServer() {
     const roomId = `room_${crypto.randomBytes(5).toString('hex')}`;
     const roomCode = `JAM-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
-    const initialTrack =
-      CURATED_YOUTUBE_TRACKS.find((t) => t.videoId === initialVideoId) ||
-      CURATED_YOUTUBE_TRACKS[0];
+    const initialTrack = initialVideoId
+      ? CURATED_YOUTUBE_TRACKS.find((t) => t.videoId === initialVideoId) || null
+      : null;
 
     const playback: PlaybackState = {
       roomId,
-      videoId: initialTrack.videoId,
+      videoId: initialTrack ? initialTrack.videoId : '',
       track: initialTrack,
-      status: 'playing',
+      status: initialTrack ? 'playing' : 'paused',
       positionSec: 0,
       serverTimestamp: now,
       initiatedByUserId: user.userId,
@@ -799,48 +799,29 @@ async function startServer() {
       updatedAt: now,
     });
 
-    const firstQueueItem: QueueItem = {
-      itemId: `q_${crypto.randomBytes(4).toString('hex')}`,
-      roomId,
-      orderIndex: 100,
-      track: initialTrack,
-      addedByUserId: user.userId,
-      addedByUsername: user.displayName,
-      addedByAvatar: user.avatarUrl,
-      addedAt: now,
-      upvotes: [user.userId],
-    };
+    if (initialTrack) {
+      const firstQueueItem: QueueItem = {
+        itemId: `q_${crypto.randomBytes(4).toString('hex')}`,
+        roomId,
+        orderIndex: 100,
+        track: initialTrack,
+        addedByUserId: user.userId,
+        addedByUsername: user.displayName,
+        addedByAvatar: user.avatarUrl,
+        addedAt: now,
+        upvotes: [user.userId],
+      };
 
-    await dynamoStore.put({
-      PK: `ROOM#${roomId}`,
-      SK: `QUEUE#000100#${firstQueueItem.itemId}`,
-      entityType: 'QUEUE',
-      data: firstQueueItem,
-      updatedAt: now,
-    });
+      await dynamoStore.put({
+        PK: `ROOM#${roomId}`,
+        SK: `QUEUE#000100#${firstQueueItem.itemId}`,
+        entityType: 'QUEUE',
+        data: firstQueueItem,
+        updatedAt: now,
+      });
 
-    const welcomeMsg: ChatMessage = {
-      messageId: `msg_${crypto.randomBytes(4).toString('hex')}`,
-      roomId,
-      userId: user.userId,
-      username: user.username,
-      displayName: user.displayName,
-      avatarUrl: user.avatarUrl,
-      content: `Created room "${newRoom.name}" (Code: ${roomCode}). Invite friends to listen and talk live!`,
-      type: 'system',
-      timestamp: now,
-      reactions: {},
-    };
-
-    await dynamoStore.put({
-      PK: `ROOM#${roomId}`,
-      SK: `MSG#${now}#${welcomeMsg.messageId}`,
-      entityType: 'MESSAGE',
-      data: welcomeMsg,
-      updatedAt: now,
-    });
-
-    await recordListeningHistory(user.userId, roomId, newRoom.name, initialTrack);
+      await recordListeningHistory(user.userId, roomId, newRoom.name, initialTrack);
+    }
 
     const fullRoom = await getFullRoomDetails(roomId);
     res.json({ room: fullRoom });

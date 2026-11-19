@@ -218,6 +218,20 @@ class GlobalRoomDiscoveryService {
             this.socket.send(makeSubscribePacket('jamtogether/codes/+') as any);
             // Subscribe to retained room chat histories across all rooms
             this.socket.send(makeSubscribePacket('jamtogether/chat/rooms/+') as any);
+
+            // Explicitly purge legacy dummy/mock retained rooms and codes from public broker
+            const legacyPurgeTargets = [
+              { id: 'room_fkj_masego', code: 'LIVE' },
+              { id: 'room_lofi_study', code: 'LOFI' },
+              { id: 'room_synthwave', code: 'WAVE' },
+              { id: 'room_lofi', code: 'LOFI' },
+            ];
+            legacyPurgeTargets.forEach((t) => {
+              this.socket?.send(makePublishPacket(`jamtogether/discovery/rooms/${t.id}`, '', true) as any);
+              this.socket?.send(makePublishPacket(`jamtogether/chat/rooms/${t.id}`, '', true) as any);
+              this.socket?.send(makePublishPacket(`jamtogether/codes/${t.code}`, '', true) as any);
+              this.socket?.send(makePublishPacket(`jamtogether/codes/JAM-${t.code}`, '', true) as any);
+            });
           }
         }, 300);
 
@@ -241,19 +255,37 @@ class GlobalRoomDiscoveryService {
             const parts = topic.split('/');
             const roomId = parts[parts.length - 1];
 
-            if (!payload.trim() || payload === 'null') {
+            if (
+              !payload.trim() ||
+              payload === 'null' ||
+              roomId === 'room_fkj_masego' ||
+              roomId === 'room_lofi_study' ||
+              roomId === 'room_synthwave' ||
+              roomId.includes('dummy') ||
+              roomId.includes('sample')
+            ) {
               this.discoveredRoomsMap.delete(roomId);
               this.notify();
               return;
             }
 
-            const roomData = JSON.parse(payload) as JamRoom;
-            if (roomData && roomData.roomId) {
-              this.discoveredRoomsMap.set(roomData.roomId, roomData);
-              const cleanCode = roomData.roomCode.replace(/^JAM-?/i, '').toUpperCase();
-              this.codeToRoomMap.set(cleanCode, roomData);
-              this.notify();
-            }
+            try {
+              const roomData = JSON.parse(payload) as JamRoom;
+              if (
+                roomData &&
+                roomData.roomId &&
+                roomData.hostUserId !== 'peer_host' &&
+                !roomData.name?.toLowerCase().includes('dummy') &&
+                !roomData.name?.toLowerCase().includes('sample') &&
+                !roomData.name?.toLowerCase().includes('mock') &&
+                !roomData.name?.toLowerCase().includes('jam lounge (')
+              ) {
+                this.discoveredRoomsMap.set(roomData.roomId, roomData);
+                const cleanCode = roomData.roomCode.replace(/^JAM-?/i, '').toUpperCase();
+                this.codeToRoomMap.set(cleanCode, roomData);
+                this.notify();
+              }
+            } catch {}
           }
 
           // 2. Room Code topic: jamtogether/codes/{code}
@@ -261,10 +293,28 @@ class GlobalRoomDiscoveryService {
             const parts = topic.split('/');
             const codeKey = parts[parts.length - 1].toUpperCase();
 
+            if (
+              codeKey === 'LIVE' ||
+              codeKey === 'LOFI' ||
+              codeKey === 'WAVE' ||
+              codeKey === 'JAM-LIVE' ||
+              codeKey === 'JAM-LOFI' ||
+              codeKey === 'JAM-WAVE'
+            ) {
+              this.codeToRoomMap.delete(codeKey);
+              this.notify();
+              return;
+            }
+
             if (payload.trim() && payload !== 'null') {
               try {
                 const roomData = JSON.parse(payload) as JamRoom;
-                if (roomData && roomData.roomId) {
+                if (
+                  roomData &&
+                  roomData.roomId &&
+                  roomData.hostUserId !== 'peer_host' &&
+                  !roomData.name?.toLowerCase().includes('dummy')
+                ) {
                   this.codeToRoomMap.set(codeKey, roomData);
                   this.discoveredRoomsMap.set(roomData.roomId, roomData);
                   this.notify();

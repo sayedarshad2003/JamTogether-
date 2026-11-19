@@ -339,9 +339,15 @@ export function getCleanLocalRooms(): JamRoom[] {
     const filtered = rooms.filter(
       (r) =>
         r &&
-        r.roomId !== 'room_fkj_masego' &&
-        r.roomId !== 'room_lofi_study' &&
-        r.roomId !== 'room_synthwave'
+        r.roomId &&
+        r.hostUserId !== 'peer_host' &&
+        !r.roomId.includes('lofi') &&
+        !r.roomId.includes('synthwave') &&
+        !r.roomId.includes('fkj') &&
+        !r.name?.toLowerCase().includes('dummy') &&
+        !r.name?.toLowerCase().includes('sample') &&
+        !r.name?.toLowerCase().includes('mock') &&
+        !r.name?.toLowerCase().includes('jam lounge (')
     );
     if (filtered.length !== rooms.length) {
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(filtered));
@@ -350,6 +356,32 @@ export function getCleanLocalRooms(): JamRoom[] {
   } catch {
     return [];
   }
+}
+
+// Global purge of any legacy dummy/mock/static data from local storage
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const raw = localStorage.getItem(LOCAL_ROOMS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(
+          (r: any) =>
+            r &&
+            r.roomId &&
+            r.hostUserId !== 'peer_host' &&
+            !r.roomId.includes('lofi') &&
+            !r.roomId.includes('synthwave') &&
+            !r.roomId.includes('fkj') &&
+            !r.name?.toLowerCase().includes('dummy') &&
+            !r.name?.toLowerCase().includes('sample') &&
+            !r.name?.toLowerCase().includes('mock') &&
+            !r.name?.toLowerCase().includes('jam lounge (')
+        );
+        localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(cleaned));
+      }
+    }
+  } catch {}
 }
 
 async function handleOfflineFallback<T>(
@@ -698,39 +730,8 @@ async function handleOfflineFallback<T>(
       matched = globalRoomDiscovery.getRoomByCode(cleanCode) || undefined;
     }
 
-    // 3. Synthesize room deterministically if not yet seen so peer can join immediately
     if (!matched) {
-      const synRoomId = `jam_${cleanCode.toLowerCase()}`;
-      matched = {
-        roomId: synRoomId,
-        roomCode: `JAM-${cleanCode}`,
-        name: `Jam Room ${cleanCode}`,
-        description: 'Synchronized live music space',
-        genreTag: 'Electronic / Indie',
-        isPrivate: false,
-        hostUserId: 'peer_host',
-        hostUsername: 'Host',
-        hostAvatarUrl: '',
-        activeMemberCount: 1,
-        createdAt: Date.now(),
-        playback: {
-          roomId: synRoomId,
-          videoId: '',
-          track: null,
-          status: 'paused',
-          positionSec: 0,
-          serverTimestamp: Date.now(),
-          initiatedByUserId: 'peer_host',
-          initiatedByUsername: 'Host',
-          historyIndex: 0,
-        },
-        queue: [],
-        members: [],
-        messages: [],
-      };
-      localRooms.push(matched);
-      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
-      globalRoomDiscovery.broadcastRoom(matched);
+      throw new Error(`Room with code "${rawCode}" not found. Please verify the code or check if the room was closed.`);
     }
 
     return { room: matched } as any;
@@ -751,37 +752,7 @@ async function handleOfflineFallback<T>(
       room = globalRoomDiscovery.getDiscoveredRooms().find((r) => r.roomId === targetRoomId);
     }
     if (!room) {
-      const cleanSuffix = targetRoomId.replace(/^jam_/, '').toUpperCase();
-      room = {
-        roomId: targetRoomId,
-        roomCode: `JAM-${cleanSuffix}`,
-        name: `Jam Lounge (${cleanSuffix})`,
-        description: 'Synchronized listening space',
-        genreTag: 'Electronic / Indie',
-        isPrivate: false,
-        hostUserId: 'peer_host',
-        hostUsername: 'Host',
-        hostAvatarUrl: '',
-        activeMemberCount: 1,
-        createdAt: Date.now(),
-        playback: {
-          roomId: targetRoomId,
-          videoId: '',
-          track: null,
-          status: 'paused',
-          positionSec: 0,
-          serverTimestamp: Date.now(),
-          initiatedByUserId: 'peer_host',
-          initiatedByUsername: 'Host',
-          historyIndex: 0,
-        },
-        queue: [],
-        members: [],
-        messages: [],
-      };
-      localRooms.push(room);
-      localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
-      globalRoomDiscovery.broadcastRoom(room);
+      throw new Error(`Jam Room "${targetRoomId}" not found.`);
     }
 
     if (!room.queue) room.queue = [];
