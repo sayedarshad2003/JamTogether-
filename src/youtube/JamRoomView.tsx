@@ -10,6 +10,9 @@ import {
   Trash2,
   Wifi,
   WifiOff,
+  ListMusic,
+  MessageSquare,
+  Radio,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -55,7 +58,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTab, setSearchTab] = useState<'search' | 'playlist' | 'my-playlists'>('search');
   const [toastError, setToastError] = useState<string | null>(null);
-  const [roomLoadFailed, setRoomLoadFailed] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'queue' | 'chat' | 'voice' | 'people'>('queue');
 
   const realtimeClientRef = useRef<RoomRealtimeClient | null>(null);
   const currentPlaybackRef = useRef<PlaybackState | null>(null);
@@ -136,7 +139,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   }, [currentUser, inVoiceChat, isMuted, isSpeaking]);
 
   // Fetch initial authoritative room state from API
-  const fetchRoomState = useCallback(async (): Promise<boolean> => {
+  const fetchRoomState = useCallback(async () => {
     try {
       const res = await apiRequest<{ room: JamRoom }>(`/api/rooms/${roomId}`);
       if (res?.room) {
@@ -154,49 +157,18 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         );
         setMessages(initialMerged);
         persistRoomMessages(roomId, initialMerged);
-        if (res.room.playback) setPlayback(res.room.playback);
+        globalRoomDiscovery.broadcastRoomChat(roomId, initialMerged);
 
-        // Only the host may publish retained room snapshots. A guest re-publishing its
-        // (possibly stale) copy would overwrite the host's fresher retained state.
-        if (res.room.hostUserId === currentUserRef.current?.userId) {
-          globalRoomDiscovery.broadcastRoomChat(roomId, initialMerged);
-          globalRoomDiscovery.broadcastRoom(res.room);
-        }
-        return true;
+        if (res.room.playback) setPlayback(res.room.playback);
+        globalRoomDiscovery.broadcastRoom(res.room);
       }
-      return false;
-    } catch {
-      return false;
+    } catch (err) {
+      setToastError((err as Error).message);
     }
   }, [roomId]);
 
-  // On a page refresh a guest has no local copy of the room: it only arrives a moment later
-  // via the MQTT retained snapshot. So retry for a few seconds instead of giving up on the
-  // first "not found" (which left the pulsing skeleton / blank screen forever).
   useEffect(() => {
-    let cancelled = false;
-    let timer: number | null = null;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 16; // ~12s
-    setRoomLoadFailed(false);
-
-    const attempt = async () => {
-      if (cancelled) return;
-      const ok = await fetchRoomState();
-      if (cancelled || ok) return;
-      attempts += 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        setRoomLoadFailed(true);
-        return;
-      }
-      timer = window.setTimeout(attempt, 750);
-    };
-    attempt();
-
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
+    fetchRoomState();
   }, [fetchRoomState]);
 
   // Keep chat messages in sync with cloud MQTT retained chat history
@@ -249,20 +221,20 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
           case 'room:peer_joined': {
             const joiningMember = msg.payload?.member as RoomMember;
             if (joiningMember && joiningMember.userId !== activeUser.userId) {
-              const prevMembers = currentMembersRef.current;
-              const alreadyThere = prevMembers.some((m) => m.userId === joiningMember.userId);
-              const nextMembers = alreadyThere ? prevMembers : [...prevMembers, joiningMember];
-              setMembers(nextMembers);
-              // Reply (outside any state updater) with current room state + chat history
-              // so the joining/refreshing peer gets the live playback position.
-              realtimeClientRef.current?.send({
-                type: 'room:sync_state',
-                payload: {
-                  members: nextMembers,
-                  playback: currentPlaybackRef.current,
-                  queue: currentQueueRef.current,
-                  messages: currentMessagesRef.current,
-                },
+              setMembers((prev) => {
+                const exists = prev.some((m) => m.userId === joiningMember.userId);
+                const nextMembers = exists ? prev : [...prev, joiningMember];
+                // Broadcast current room state AND full chat messages history back to joining peer
+                realtimeClientRef.current?.send({
+                  type: 'room:sync_state',
+                  payload: {
+                    members: nextMembers,
+                    playback: currentPlaybackRef.current,
+                    queue: currentQueueRef.current,
+                    messages: currentMessagesRef.current,
+                  },
+                });
+                return nextMembers;
               });
             }
             break;
@@ -1044,35 +1016,6 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   };
 
   if (!room || !playback) {
-    if (roomLoadFailed && !room) {
-      return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-center space-y-4">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Couldn't reach this Jam room</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            The host may be offline or the room was closed. Ask the host to open the room again, or go back and join with the room code.
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRoomLoadFailed(false);
-                window.location.reload();
-              }}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-violet-600 text-white hover:bg-violet-500 transition-colors"
-            >
-              Try again
-            </button>
-            <button
-              type="button"
-              onClick={onLeaveRoom}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
         <div className="h-96 rounded-2xl bg-slate-100 dark:bg-[#11131C] animate-pulse border border-slate-200 dark:border-slate-800" />
@@ -1080,8 +1023,98 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     );
   }
 
+  // Helper to render participants panel
+  const renderParticipants = () => (
+    <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-3.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Participants ({members.length})
+          </h3>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <span>Host:</span>
+          <img
+            src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
+            alt={room.hostUsername}
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+            }}
+            className="w-4 h-4 rounded-full object-cover border border-violet-500/40"
+          />
+          <strong className="text-slate-900 dark:text-white">{room.hostUsername}</strong>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {members.map((member) => {
+          const isMemberHost = member.userId === room.hostUserId;
+          return (
+            <div
+              key={member.userId}
+              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200/80 dark:border-slate-800"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={member.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`}
+                  alt={member.displayName}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`;
+                  }}
+                  className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                      {member.displayName}
+                    </span>
+                    {isMemberHost && (
+                      <Crown
+                        className="w-3.5 h-3.5 text-amber-500 shrink-0"
+                        aria-label="Room Host"
+                      />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    @{member.username} · {member.isOnline ? 'Online' : 'Offline'}
+                  </p>
+                </div>
+              </div>
+
+              {isHost && !isMemberHost && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleTransferHost(member.userId)}
+                    className="px-2 py-1 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                    title="Transfer Host privileges to this member"
+                  >
+                    Make Host
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKickMember(member.userId)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                    title="Remove member from room"
+                  >
+                    <UserMinus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
       {toastError && (
         <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-600 dark:text-red-400 flex items-center justify-between">
           <span>{toastError}</span>
@@ -1091,27 +1124,27 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         </div>
       )}
 
-      {/* Room Context Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
+      {/* Streamlined Room Context Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={handleLeave}
-            className="p-2.5 rounded-xl bg-slate-100 dark:bg-[#181B28] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
-            title="Leave Jam Room and return to Dashboard"
+            className="p-2 sm:p-2.5 rounded-xl bg-slate-100 dark:bg-[#181B28] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
+            title="Leave Jam Room"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
                 {room.name}
               </h1>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                · {room.genreTag} · {room.isPrivate ? 'Private Room' : 'Public Room'}
+              <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
+                · {room.genreTag}
               </span>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs">
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 text-xs">
                 <img
                   src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
                   alt={room.hostUsername}
@@ -1120,67 +1153,53 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
                     e.currentTarget.onerror = null;
                     e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
                   }}
-                  className="w-4 h-4 rounded-full object-cover border border-violet-500/30"
+                  className="w-3.5 h-3.5 rounded-full object-cover"
                 />
-                <span className="text-[11px] font-medium text-violet-600 dark:text-violet-400">
-                  Host: {room.hostUsername}
+                <span className="text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                  {room.hostUsername}
                 </span>
               </div>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-              {room.description}
-            </p>
           </div>
         </div>
 
-        {/* Shareable Room Code, Invite Link & Connection Telemetry */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#181B28] text-xs font-mono text-slate-700 dark:text-slate-300">
-            {wsConnected ? (
-              <>
-                <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-                <span>{syncMode === 'cloud-relay' ? 'Cloud Relay (Live)' : 'Real-Time Sync'}</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3.5 h-3.5 text-amber-500" />
-                <span>Connecting...</span>
-              </>
-            )}
-          </div>
-
+        {/* Clean Actions: Share & Room Code */}
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          {/* Room Code Badge */}
           <button
             type="button"
             onClick={copyRoomCode}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#181B28] hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-mono font-semibold text-slate-800 dark:text-slate-200 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#181B28] hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-mono font-semibold text-slate-800 dark:text-slate-200 transition-colors"
+            title="Click to copy room code"
           >
             {copiedCode ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Copied {room.roomCode}</span>
+                <span>Copied!</span>
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-violet-500" />
-                <span>Code: {room.roomCode}</span>
+                <span>#{room.roomCode}</span>
               </>
             )}
           </button>
 
+          {/* 1-Tap Share / Invite */}
           <button
             type="button"
             onClick={copyInviteLink}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold text-violet-600 dark:text-violet-300 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold text-violet-600 dark:text-violet-300 transition-colors"
           >
             {copiedLink ? (
               <>
                 <Check className="w-3.5 h-3.5" />
-                <span>Invite Link Copied</span>
+                <span>Link Copied</span>
               </>
             ) : (
               <>
                 <Share2 className="w-3.5 h-3.5" />
-                <span>Copy Invite Link</span>
+                <span>Share</span>
               </>
             )}
           </button>
@@ -1189,20 +1208,20 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             <button
               type="button"
               onClick={handleCloseRoom}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-600 dark:text-red-400 transition-colors whitespace-nowrap"
-              title="Close Room for All Participants"
+              className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-600 dark:text-red-400 transition-colors"
+              title="Close Room for Everyone"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Close Room</span>
+              <span className="hidden sm:inline sm:ml-1">End</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Main 12-Column Jam Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 7 Columns: YouTube Synchronized Player + WebRTC Voice Chat + Room Participants */}
-        <div className="lg:col-span-7 space-y-6">
+      {/* Main Responsive Jam Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+        {/* Left Column (Desktop 7 cols) / Primary Column (Mobile) */}
+        <div className="lg:col-span-7 space-y-4">
           <YouTubePlayer
             playback={playback}
             isHost={isHost}
@@ -1214,115 +1233,156 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             }}
           />
 
-          <VoiceChatPanel
-            members={members}
-            currentUser={currentUser}
-            inVoiceChat={inVoiceChat}
-            isMuted={isMuted}
-            isSpeaking={isSpeaking}
-            connectionStatus={connectionStatus}
-            permissionNotice={permissionNotice}
-            audioDevices={audioDevices}
-            selectedDeviceId={selectedDeviceId}
-            onSelectDevice={setSelectedDeviceId}
-            peerStatuses={peerStatuses}
-            onJoinVC={joinVoiceChat}
-            onLeaveVC={leaveVoiceChat}
-            onToggleMute={toggleMuteMic}
-            onTestSpeakingPulse={triggerTestSpeakingPulse}
-          />
+          {/* MOBILE ONLY: Sleek Segmented Navigation Tabs */}
+          <div className="lg:hidden space-y-3">
+            <div className="grid grid-cols-4 p-1 rounded-xl bg-slate-100 dark:bg-[#131520] border border-slate-200 dark:border-slate-800 gap-1">
+              <button
+                type="button"
+                onClick={() => setMobileTab('queue')}
+                className={`py-2 px-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mobileTab === 'queue'
+                    ? 'bg-white dark:bg-[#1E2235] text-violet-600 dark:text-violet-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ListMusic className="w-3.5 h-3.5" />
+                <span>Queue</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                  {queue.length}
+                </span>
+              </button>
 
-          {/* Room Participants & Host Privileges Bar */}
-          <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Room Participants ({members.length})
-                </h3>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                <span>Host:</span>
-                <img
-                  src={room.hostAvatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`}
-                  alt={room.hostUsername}
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(room.hostUsername || 'Host')}`;
+              <button
+                type="button"
+                onClick={() => setMobileTab('chat')}
+                className={`py-2 px-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mobileTab === 'chat'
+                    ? 'bg-white dark:bg-[#1E2235] text-violet-600 dark:text-violet-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Chat</span>
+                {messages.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    {messages.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileTab('voice')}
+                className={`py-2 px-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mobileTab === 'voice'
+                    ? 'bg-white dark:bg-[#1E2235] text-violet-600 dark:text-violet-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Voice</span>
+                {inVoiceChat && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileTab('people')}
+                className={`py-2 px-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mobileTab === 'people'
+                    ? 'bg-white dark:bg-[#1E2235] text-violet-600 dark:text-violet-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>People</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                  {members.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Mobile Tab Panes */}
+            {mobileTab === 'queue' && (
+              <div className="h-[460px]">
+                <SharedQueuePanel
+                  queue={queue}
+                  currentVideoId={playback.videoId}
+                  currentUserId={currentUser?.userId}
+                  isHost={isHost}
+                  onSelectTrack={handleSelectTrackFromQueue}
+                  onRemoveItem={handleRemoveQueueItem}
+                  onReorderItem={handleReorderQueueItem}
+                  onOpenSearch={(tab = 'search') => {
+                    setSearchTab(tab);
+                    setSearchOpen(true);
                   }}
-                  className="w-4 h-4 rounded-full object-cover border border-violet-500/40"
                 />
-                <strong className="text-slate-900 dark:text-white">{room.hostUsername}</strong>
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {members.map((member) => {
-                const isMemberHost = member.userId === room.hostUserId;
-                return (
-                  <div
-                    key={member.userId}
-                    className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200/80 dark:border-slate-800"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <img
-                        src={member.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`}
-                        alt={member.displayName}
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          e.currentTarget.onerror = null;
-                          e.currentTarget.src = `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(member.displayName || member.username || 'user')}`;
-                        }}
-                        className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                            {member.displayName}
-                          </span>
-                          {isMemberHost && (
-                            <Crown
-                              className="w-3.5 h-3.5 text-amber-500 shrink-0"
-                              aria-label="Room Host"
-                            />
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                          @{member.username} · {member.isOnline ? 'Online' : 'Offline'}
-                        </p>
-                      </div>
-                    </div>
+            {mobileTab === 'chat' && (
+              <div className="h-[460px]">
+                <LiveChatPanel
+                  messages={messages}
+                  members={members}
+                  currentUser={currentUser}
+                  onSendMessage={handleSendMessage}
+                  onToggleReaction={handleToggleReaction}
+                />
+              </div>
+            )}
 
-                    {isHost && !isMemberHost && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleTransferHost(member.userId)}
-                          className="px-2 py-1 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
-                          title="Transfer Host privileges to this member"
-                        >
-                          Make Host
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleKickMember(member.userId)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                          title="Remove member from room"
-                        >
-                          <UserMinus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {mobileTab === 'voice' && (
+              <VoiceChatPanel
+                members={members}
+                currentUser={currentUser}
+                inVoiceChat={inVoiceChat}
+                isMuted={isMuted}
+                isSpeaking={isSpeaking}
+                connectionStatus={connectionStatus}
+                permissionNotice={permissionNotice}
+                audioDevices={audioDevices}
+                selectedDeviceId={selectedDeviceId}
+                onSelectDevice={setSelectedDeviceId}
+                peerStatuses={peerStatuses}
+                onJoinVC={joinVoiceChat}
+                onLeaveVC={leaveVoiceChat}
+                onToggleMute={toggleMuteMic}
+                onTestSpeakingPulse={triggerTestSpeakingPulse}
+              />
+            )}
+
+            {mobileTab === 'people' && renderParticipants()}
+          </div>
+
+          {/* DESKTOP ONLY: VoiceChatPanel + Room Participants in Left Column */}
+          <div className="hidden lg:block space-y-6">
+            <VoiceChatPanel
+              members={members}
+              currentUser={currentUser}
+              inVoiceChat={inVoiceChat}
+              isMuted={isMuted}
+              isSpeaking={isSpeaking}
+              connectionStatus={connectionStatus}
+              permissionNotice={permissionNotice}
+              audioDevices={audioDevices}
+              selectedDeviceId={selectedDeviceId}
+              onSelectDevice={setSelectedDeviceId}
+              peerStatuses={peerStatuses}
+              onJoinVC={joinVoiceChat}
+              onLeaveVC={leaveVoiceChat}
+              onToggleMute={toggleMuteMic}
+              onTestSpeakingPulse={triggerTestSpeakingPulse}
+            />
+
+            {renderParticipants()}
           </div>
         </div>
 
-        {/* Right 5 Columns: Shared Music Queue + Real-Time Text Chat */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* Right 5 Columns: DESKTOP ONLY (Queue + Chat) */}
+        <div className="hidden lg:block lg:col-span-5 space-y-6">
           <div className="h-[370px]">
             <SharedQueuePanel
               queue={queue}

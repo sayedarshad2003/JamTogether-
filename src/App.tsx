@@ -4,7 +4,17 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
+import {
+  Settings as SettingsIcon,
+  Radio,
+  Hash,
+  Plus,
+  User,
+  Sun,
+  Moon,
+  LogOut,
+  Headphones,
+} from 'lucide-react';
 import { ThemeProvider, useTheme } from './themes/ThemeContext.tsx';
 import { AuthProvider, useAuth } from './authentication/AuthContext.tsx';
 import { AuthModal } from './authentication/AuthModal.tsx';
@@ -184,8 +194,8 @@ function JamTogetherShell() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#090A0F] text-slate-900 dark:text-slate-100 transition-colors">
-      {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-8 px-6 py-4 bg-white/90 dark:bg-[#090A0F]/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+      {/* Main Top Navigation Bar */}
+      <header className="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 py-3 bg-white/95 dark:bg-[#090A0F]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         {/* Zone 1: Single text element wordmark */}
         <a
           href="/"
@@ -193,12 +203,15 @@ function JamTogetherShell() {
             e.preventDefault();
             navigateToDashboard();
           }}
-          className="text-lg font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0"
+          className="flex items-center gap-2 text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0 group"
         >
-          JamTogether
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-blue-600 flex items-center justify-center text-white shadow-md shadow-violet-500/20 group-hover:scale-105 transition-transform">
+            <Radio className="w-4 h-4" />
+          </div>
+          <span className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent">JamTogether</span>
         </a>
 
-        {/* Zone 2: Navigation Links */}
+        {/* Zone 2: Desktop Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
           <a
             href="#dashboard"
@@ -274,55 +287,67 @@ function JamTogetherShell() {
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-violet-600/15 to-blue-600/15 text-violet-600 dark:text-violet-400 border border-violet-500/20">
-                Sign In (Guest / Google)
+                Sign In
               </span>
             )}
           </a>
-          <a
-            href="#theme"
-            onClick={(e) => {
-              e.preventDefault();
-              toggleTheme();
-            }}
-            className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
-            {theme === 'dark' ? 'Light Theme' : 'Dark Theme'}
-          </a>
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+          </button>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Zone 3: Header Actions (Mobile & Desktop) */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Quick theme toggle on mobile */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="md:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+          </button>
+
+          {/* Quick user avatar tap on mobile */}
+          <button
+            type="button"
+            onClick={() => setAuthModalOpen(true)}
+            className="md:hidden p-1 rounded-full border border-slate-200 dark:border-slate-700"
+            aria-label="User Account"
+          >
+            {user ? (
+              <img
+                src={user.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`}
+                alt={user.displayName}
+                className="w-7 h-7 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-violet-500/15 text-violet-600 flex items-center justify-center">
+                <User className="w-3.5 h-3.5" />
+              </div>
+            )}
+          </button>
+
+          {/* Primary Action Button */}
           <button
             type="button"
             onClick={() => setCreateModalOpen(true)}
-            className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-xl transition-all whitespace-nowrap shrink-0"
+            className="px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-xl transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap"
           >
-            Create Jam
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span className="hidden sm:inline">Create Jam</span>
+            <span className="sm:hidden">Host</span>
           </button>
         </div>
       </header>
 
-      {/* Mobile Secondary Utility Strip for narrow viewports */}
-      <div className="flex md:hidden items-center justify-between px-4 py-2 bg-white dark:bg-[#11131C] border-b border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-600 dark:text-slate-400 overflow-x-auto gap-4">
-        <button onClick={navigateToDashboard} className="whitespace-nowrap">
-          Dashboard
-        </button>
-        <button onClick={() => setJoinModalOpen(true)} className="whitespace-nowrap">
-          Join Code
-        </button>
-        <button onClick={navigateToSettings} className="whitespace-nowrap font-bold text-violet-600 dark:text-violet-400">
-          Settings
-        </button>
-        <button onClick={() => setAuthModalOpen(true)} className="whitespace-nowrap">
-          {user ? `@${user.username}` : 'Account'}
-        </button>
-        <button onClick={toggleTheme} className="whitespace-nowrap">
-          {theme === 'dark' ? 'Light' : 'Dark'}
-        </button>
-      </div>
-
       {/* Main Content Area */}
-      <main className="flex-1">
+      <main className={`flex-1 ${!activeRoomId ? 'pb-24 md:pb-8' : 'pb-6'}`}>
         {activeRoomId ? (
           <ErrorBoundary>
             <JamRoomView
@@ -356,8 +381,83 @@ function JamTogetherShell() {
         )}
       </main>
 
+      {/* Sleek Mobile Bottom Navigation Bar (Hidden when inside Jam Room) */}
+      {!activeRoomId && (
+        <nav
+          aria-label="Mobile Navigation"
+          className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#090A0F]/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-3 py-1.5 flex items-center justify-around shadow-2xl safe-area-pb"
+        >
+          <button
+            type="button"
+            onClick={navigateToDashboard}
+            className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all ${
+              currentPage === 'dashboard'
+                ? 'text-violet-600 dark:text-violet-400 font-bold scale-105'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Radio className="w-5 h-5" />
+            <span className="text-[10px] tracking-tight">Live Jams</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setJoinModalOpen(true)}
+            className="flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+          >
+            <Hash className="w-5 h-5" />
+            <span className="text-[10px] tracking-tight">Join Code</span>
+          </button>
+
+          {/* Centered Floating + Host Button */}
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="flex flex-col items-center justify-center -mt-5 focus:outline-none group"
+            title="Create and Host Jam Room"
+          >
+            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-violet-600 via-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-violet-500/35 group-hover:scale-110 group-active:scale-95 transition-all">
+              <Plus className="w-6 h-6 stroke-[2.5]" />
+            </div>
+            <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 mt-0.5">Host</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={navigateToSettings}
+            className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all ${
+              currentPage === 'settings'
+                ? 'text-violet-600 dark:text-violet-400 font-bold scale-105'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <SettingsIcon className="w-5 h-5" />
+            <span className="text-[10px] tracking-tight">Settings</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAuthModalOpen(true)}
+            className="flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+          >
+            {user ? (
+              <img
+                src={user.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.displayName || user.username || 'user')}`}
+                alt={user.displayName}
+                className="w-5 h-5 rounded-full object-cover border border-violet-500/50"
+              />
+            ) : (
+              <User className="w-5 h-5" />
+            )}
+            <span className="text-[10px] tracking-tight truncate max-w-[55px]">
+              {user ? user.displayName.split(' ')[0] : 'Sign In'}
+            </span>
+          </button>
+        </nav>
+      )}
+
       {/* Quiet Footer */}
-      <footer className="py-6 px-6 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400">
+      <footer className="hidden md:block py-6 px-6 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-[1360px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>JamTogether — Synchronized Social Music Listening & WebRTC Voice Platform</span>
           <div className="flex items-center gap-4">

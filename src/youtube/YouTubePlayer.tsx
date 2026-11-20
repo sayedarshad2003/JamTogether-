@@ -447,30 +447,33 @@ export function YouTubePlayer({
           </div>
         )}
 
-        {/* Subtle Top Overlay Bar for Sync Telemetry */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 p-4 bg-gradient-to-b from-black/80 via-black/35 to-transparent flex items-center justify-between text-xs text-white">
+        {/* Sleek Top Overlay Bar */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 p-3 bg-gradient-to-b from-black/80 via-black/25 to-transparent flex items-center justify-between text-xs text-white">
           <div className="flex items-center gap-2">
-            <Radio className="w-3.5 h-3.5 text-violet-400" />
-            <span className="font-medium">
-              {playback.status === 'playing' ? 'Synchronized Live Stream' : 'Paused by Host'}
-            </span>
-            <span aria-hidden="true" className="text-white/50">
-              ·
-            </span>
-            <span className="font-mono text-white/80 tabular-nums">
-              Drift: {syncDriftMs <= 500 ? `${syncDriftMs}ms (Locked)` : `${syncDriftMs}ms`}
-            </span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-[11px] font-semibold text-white">
+              {playback.status === 'playing' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Live Sync</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span>Paused</span>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="pointer-events-auto flex items-center gap-2">
             <button
               type="button"
               onClick={handleManualResync}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 border border-white/15 text-[11px] font-medium text-white transition-colors"
-              title="Force resynchronize with server clock"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/15 text-[11px] font-medium text-white transition-colors"
+              title="Resync audio with room"
             >
               <RefreshCw className="w-3 h-3" />
-              <span>Resync Audio</span>
+              <span className="hidden sm:inline">Resync Audio</span>
             </button>
           </div>
         </div>
@@ -567,9 +570,9 @@ export function YouTubePlayer({
             </button>
 
             {!isHost && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 ml-2">
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 ml-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-[#181B28]">
                 <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Host controls transport · You can queue songs</span>
+                <span className="text-[11px] font-medium">Host Controls</span>
               </span>
             )}
           </div>

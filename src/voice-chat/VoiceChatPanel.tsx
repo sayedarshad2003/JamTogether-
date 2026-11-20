@@ -54,18 +54,23 @@ export function VoiceChatPanel({
   );
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-5 space-y-4">
+    <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <Radio className="w-4 h-4 text-violet-600 dark:text-violet-400" />
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Live Voice Chat (WebRTC P2P Mesh)
+              Live Voice Lounge
             </h3>
+            {vcParticipants.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {vcParticipants.length} Talking
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Independent of music playback · {vcParticipants.length} active in voice channel · Status:{' '}
-            <span className="font-mono">{connectionStatus.toUpperCase()}</span>
+            Real-time audio with friends while music plays
           </p>
         </div>
 
@@ -74,17 +79,17 @@ export function VoiceChatPanel({
             <button
               type="button"
               onClick={onJoinVC}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-all shadow-sm whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-all shadow-sm whitespace-nowrap active:scale-95"
             >
               <PhoneCall className="w-3.5 h-3.5" />
-              <span>Join Voice Chat</span>
+              <span>Join Voice</span>
             </button>
           ) : (
             <>
               <button
                 type="button"
                 onClick={onToggleMute}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap active:scale-95 ${
                   isMuted
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
                     : 'bg-slate-100 dark:bg-[#181B28] border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -93,12 +98,12 @@ export function VoiceChatPanel({
                 {isMuted ? (
                   <>
                     <MicOff className="w-3.5 h-3.5" />
-                    <span>Unmute Mic</span>
+                    <span>Unmute</span>
                   </>
                 ) : (
                   <>
                     <Mic className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Mute Mic</span>
+                    <span>Mute</span>
                   </>
                 )}
               </button>
@@ -107,20 +112,20 @@ export function VoiceChatPanel({
                 type="button"
                 onClick={onTestSpeakingPulse}
                 disabled={isMuted}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-violet-500/10 text-violet-600 dark:text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 transition-colors whitespace-nowrap"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-violet-500/10 text-violet-600 dark:text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 transition-colors whitespace-nowrap"
                 title="Test voice activity indicator"
               >
                 <Volume2 className="w-3.5 h-3.5" />
-                <span>Test Mic Activity</span>
+                <span>Test Mic</span>
               </button>
 
               <button
                 type="button"
                 onClick={onLeaveVC}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 dark:text-red-400 transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 dark:text-red-400 transition-colors whitespace-nowrap active:scale-95"
               >
                 <PhoneOff className="w-3.5 h-3.5" />
-                <span>Disconnect VC</span>
+                <span>Leave</span>
               </button>
             </>
           )}
@@ -209,7 +214,9 @@ export function VoiceChatPanel({
                         ? 'Speaking live...'
                         : effectiveMuted
                         ? 'Mic Muted'
-                        : `WebRTC ${peerState}`}
+                        : isSelf
+                        ? 'Connected'
+                        : 'In Voice'}
                     </p>
                   </div>
                 </div>
