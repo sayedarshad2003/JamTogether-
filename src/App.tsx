@@ -14,6 +14,7 @@ import {
   Moon,
   LogOut,
   Headphones,
+  Shield,
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './themes/ThemeContext.tsx';
 import { AuthProvider, useAuth } from './authentication/AuthContext.tsx';
@@ -21,6 +22,7 @@ import { AuthModal } from './authentication/AuthModal.tsx';
 import { DashboardView } from './dashboard/DashboardView.tsx';
 import { JamRoomView } from './rooms/JamRoomView.tsx';
 import { SettingsView } from './settings/SettingsView.tsx';
+import { SuperAdminView } from './admin/SuperAdminView.tsx';
 import { CreateRoomModal, JoinRoomModal } from './rooms/CreateJoinModals.tsx';
 import { apiRequest } from './aws-services/apiClient.ts';
 import { globalRoomDiscovery } from './realtime/globalDiscovery.ts';
@@ -117,7 +119,15 @@ function JamTogetherShell() {
     return params.get('room');
   });
 
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'settings'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'settings' | 'admin'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page === 'admin') return 'admin';
+    if (page === 'settings') return 'settings';
+    if (window.location.hash === '#admin') return 'admin';
+    if (window.location.hash === '#settings') return 'settings';
+    return 'dashboard';
+  });
 
   const [rooms, setRooms] = useState<JamRoom[]>([]);
   const [myCreatedRooms, setMyCreatedRooms] = useState<JamRoom[]>([]);
@@ -185,11 +195,28 @@ function JamTogetherShell() {
   const navigateToDashboard = () => {
     leaveRoom();
     setCurrentPage('dashboard');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('room');
+    url.searchParams.delete('page');
+    window.history.pushState({}, '', url.toString());
   };
 
   const navigateToSettings = () => {
     leaveRoom();
     setCurrentPage('settings');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('room');
+    url.searchParams.set('page', 'settings');
+    window.history.pushState({}, '', url.toString());
+  };
+
+  const navigateToAdmin = () => {
+    leaveRoom();
+    setCurrentPage('admin');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('room');
+    url.searchParams.set('page', 'admin');
+    window.history.pushState({}, '', url.toString());
   };
 
   return (
@@ -247,6 +274,19 @@ function JamTogetherShell() {
           >
             <SettingsIcon className="w-4 h-4" />
             <span>Settings</span>
+          </a>
+          <a
+            href="#admin"
+            onClick={(e) => {
+              e.preventDefault();
+              navigateToAdmin();
+            }}
+            className={`flex items-center gap-1.5 hover:text-amber-600 dark:hover:text-amber-400 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 ${
+              currentPage === 'admin' ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-amber-600/80 dark:text-amber-400/80'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-amber-500" />
+            <span>Admin</span>
           </a>
           <a
             href="#account"
@@ -360,6 +400,14 @@ function JamTogetherShell() {
           <ErrorBoundary>
             <SettingsView
               onBackToDashboard={navigateToDashboard}
+              onOpenAdminPortal={navigateToAdmin}
+              onRefreshDashboard={loadDashboard}
+            />
+          </ErrorBoundary>
+        ) : currentPage === 'admin' ? (
+          <ErrorBoundary>
+            <SuperAdminView
+              onBackToDashboard={navigateToDashboard}
               onRefreshDashboard={loadDashboard}
             />
           </ErrorBoundary>
@@ -466,7 +514,16 @@ function JamTogetherShell() {
               onClick={navigateToSettings}
               className="hover:text-slate-900 dark:hover:text-white transition-colors"
             >
-              Settings & Super Admin
+              Settings
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={navigateToAdmin}
+              className="text-amber-600 dark:text-amber-400 hover:underline transition-colors font-semibold flex items-center gap-1"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Super Admin Portal</span>
             </button>
             <span>·</span>
             <button

@@ -142,6 +142,50 @@ class GlobalRoomDiscoveryService {
     return null;
   }
 
+  /**
+   * Asynchronously wait up to timeoutMs for room discovery to arrive over MQTT.
+   * Crucial for page refreshes where the WebSocket is establishing connections.
+   */
+  public async waitForRoom(roomId: string, timeoutMs = 2500): Promise<JamRoom | null> {
+    const cleanId = String(roomId || '').trim().toLowerCase();
+    const existing =
+      this.discoveredRoomsMap.get(roomId) ||
+      Array.from(this.discoveredRoomsMap.values()).find(
+        (r) => r.roomId.toLowerCase() === cleanId || r.roomCode.toLowerCase() === cleanId
+      );
+    if (existing) return existing;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      let timer: number | null = null;
+      const unsub = this.subscribe((rooms) => {
+        const found = rooms.find(
+          (r) => r.roomId.toLowerCase() === cleanId || r.roomCode.toLowerCase() === cleanId
+        );
+        if (found && !resolved) {
+          resolved = true;
+          if (timer) clearTimeout(timer);
+          unsub();
+          resolve(found);
+        }
+      });
+
+      timer = window.setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          unsub();
+          const fallback =
+            this.discoveredRoomsMap.get(roomId) ||
+            Array.from(this.discoveredRoomsMap.values()).find(
+              (r) => r.roomId.toLowerCase() === cleanId || r.roomCode.toLowerCase() === cleanId
+            ) ||
+            null;
+          resolve(fallback);
+        }
+      }, timeoutMs);
+    });
+  }
+
   public getRoomChat(roomId: string): ChatMessage[] {
     return this.roomChatMap.get(roomId) || [];
   }

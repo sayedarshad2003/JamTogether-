@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Settings,
   Shield,
-  KeyRound,
-  RefreshCw,
   Trash2,
   AlertTriangle,
   Moon,
@@ -13,21 +11,11 @@ import {
   User,
   Check,
   ExternalLink,
-  Lock,
-  Unlock,
   ArrowLeft,
-  AlertCircle,
-  Database,
-  Users,
-  Radio,
-  Clock,
-  ListMusic,
-  Activity,
   CheckCircle2,
   Upload,
   Camera,
 } from 'lucide-react';
-import { UserProfile } from '../types/jam.ts';
 import { useAuth } from '../authentication/AuthContext.tsx';
 import { useTheme } from '../themes/ThemeContext.tsx';
 import { apiRequest } from '../aws-services/apiClient.ts';
@@ -35,45 +23,15 @@ import { compressAvatarImage } from '../utils/imageCompressor.ts';
 
 interface SettingsViewProps {
   onBackToDashboard: () => void;
+  onOpenAdminPortal?: () => void;
   onRefreshDashboard?: () => Promise<void>;
 }
 
-interface AdminOverviewData {
-  counts: {
-    users: number;
-    rooms: number;
-    members: number;
-    queue: number;
-    messages: number;
-    history: number;
-    friendships: number;
-    playlists: number;
-    totalRecords: number;
-  };
-  googleConfig: {
-    clientId: string;
-    clientSecret?: string;
-    isConfigured: boolean;
-    isSecretEnteredAsId?: boolean;
-  };
-  system: {
-    nodeVersion: string;
-    platform: string;
-    uptimeSec: number;
-    memoryUsageMb: number;
-    dynamoDb?: {
-      isConfigured: boolean;
-      tableName: string;
-      region: string;
-    };
-  };
-}
-
-export function SettingsView({ onBackToDashboard, onRefreshDashboard }: SettingsViewProps) {
+export function SettingsView({ onBackToDashboard, onOpenAdminPortal, onRefreshDashboard }: SettingsViewProps) {
   const { user, updateProfile, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'privacy' | 'admin'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'privacy'>('general');
 
   // General Settings State
   const [defaultVolume, setDefaultVolume] = useState<number>(() => {
@@ -99,31 +57,6 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [privacyMsg, setPrivacyMsg] = useState<string | null>(null);
 
-  // Super Admin State
-  const [adminKey, setAdminKey] = useState<string>(() => {
-    return sessionStorage.getItem('jamtogether_admin_key') || '';
-  });
-  const [adminPasskeyInput, setAdminPasskeyInput] = useState('');
-  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
-  const [adminOverview, setAdminOverview] = useState<AdminOverviewData | null>(null);
-  const [loadingAdminOverview, setLoadingAdminOverview] = useState(false);
-  const [adminMsg, setAdminMsg] = useState<string | null>(null);
-
-  // Admin Google Config State
-  const [adminGoogleClientId, setAdminGoogleClientId] = useState('');
-  const [adminGoogleClientSecret, setAdminGoogleClientSecret] = useState('');
-  const [savingGoogleConfig, setSavingGoogleConfig] = useState(false);
-
-  // Admin Records & Users Inspector
-  const [inspectedRecords, setInspectedRecords] = useState<any[]>([]);
-  const [inspectedType, setInspectedType] = useState<string>('USER');
-  const [loadingRecords, setLoadingRecords] = useState(false);
-
-  // Admin Data Wipe State
-  const [wipeScope, setWipeScope] = useState<'history' | 'messages' | 'rooms' | 'all'>('history');
-  const [wipeConfirmInput, setWipeConfirmInput] = useState('');
-  const [wipingData, setWipingData] = useState(false);
-
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName);
@@ -132,14 +65,6 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
       setFavoriteGenres(user.favoriteGenres?.join(', ') || '');
     }
   }, [user]);
-
-  // Load Admin Data if already authorized
-  useEffect(() => {
-    if (adminKey && activeTab === 'admin') {
-      fetchAdminOverview(adminKey);
-      fetchAdminRecords(adminKey, inspectedType);
-    }
-  }, [adminKey, activeTab]);
 
   const handleSaveGeneral = () => {
     localStorage.setItem('jamtogether_volume', String(defaultVolume));
@@ -233,136 +158,6 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
     }
   };
 
-  // Super Admin Methods
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminAuthError(null);
-    try {
-      const res = await apiRequest<{ success: boolean; adminKey: string }>('/api/admin/verify', {
-        method: 'POST',
-        body: JSON.stringify({ passkey: adminPasskeyInput.trim() }),
-      });
-      setAdminKey(res.adminKey);
-      sessionStorage.setItem('jamtogether_admin_key', res.adminKey);
-      fetchAdminOverview(res.adminKey);
-      fetchAdminRecords(res.adminKey, inspectedType);
-    } catch (err) {
-      setAdminAuthError((err as Error).message || 'Invalid passkey.');
-    }
-  };
-
-  const handleAdminLogout = () => {
-    setAdminKey('');
-    sessionStorage.removeItem('jamtogether_admin_key');
-    setAdminOverview(null);
-    setInspectedRecords([]);
-  };
-
-  const fetchAdminOverview = async (key: string) => {
-    setLoadingAdminOverview(true);
-    try {
-      const data = await apiRequest<AdminOverviewData>('/api/admin/overview', {
-        headers: { 'x-admin-key': key },
-      });
-      if (data) {
-        setAdminOverview(data);
-        if (data.googleConfig) {
-          setAdminGoogleClientId(data.googleConfig.clientId || '');
-          setAdminGoogleClientSecret(data.googleConfig.clientSecret || '');
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingAdminOverview(false);
-    }
-  };
-
-  const fetchAdminRecords = async (key: string, type: string) => {
-    setLoadingRecords(true);
-    try {
-      const data = await apiRequest<{ records: any[] }>(`/api/admin/records?type=${type}`, {
-        headers: { 'x-admin-key': key },
-      });
-      setInspectedRecords(Array.isArray(data?.records) ? data.records : []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingRecords(false);
-    }
-  };
-
-  const handleSaveGoogleClientId = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingGoogleConfig(true);
-    setAdminMsg(null);
-    try {
-      const res = await apiRequest<{
-        success: boolean;
-        message: string;
-        clientId: string;
-        clientSecret: string;
-        detectedSecretSwitch?: boolean;
-      }>('/api/admin/config/google', {
-        method: 'POST',
-        headers: { 'x-admin-key': adminKey },
-        body: JSON.stringify({
-          clientId: adminGoogleClientId.trim(),
-          clientSecret: adminGoogleClientSecret.trim(),
-        }),
-      });
-      setAdminMsg(res.message);
-      if (res.detectedSecretSwitch) {
-        setAdminGoogleClientId('');
-        setAdminGoogleClientSecret(res.clientSecret || '');
-      }
-      fetchAdminOverview(adminKey);
-    } catch (err) {
-      setAdminMsg(`Error: ${(err as Error).message}`);
-    } finally {
-      setSavingGoogleConfig(false);
-    }
-  };
-
-  const handleWipeData = async () => {
-    if (wipeConfirmInput.trim() !== 'DELETE') {
-      alert('Please type DELETE in capital letters to confirm this action.');
-      return;
-    }
-    setWipingData(true);
-    setAdminMsg(null);
-    try {
-      const res = await apiRequest<{ success: boolean; message: string }>('/api/admin/wipe', {
-        method: 'POST',
-        headers: { 'x-admin-key': adminKey },
-        body: JSON.stringify({ scope: wipeScope, confirmText: 'DELETE' }),
-      });
-      setAdminMsg(res.message);
-      setWipeConfirmInput('');
-      fetchAdminOverview(adminKey);
-      fetchAdminRecords(adminKey, inspectedType);
-      if (onRefreshDashboard) await onRefreshDashboard();
-    } catch (err) {
-      setAdminMsg(`Error: ${(err as Error).message}`);
-    } finally {
-      setWipingData(false);
-    }
-  };
-
-  const handleDeleteUserByAdmin = async (targetUserId: string) => {
-    if (!window.confirm(`Force delete user ${targetUserId}?`)) return;
-    try {
-      await apiRequest(`/api/admin/users/${targetUserId}`, {
-        method: 'DELETE',
-        headers: { 'x-admin-key': adminKey },
-      });
-      fetchAdminOverview(adminKey);
-      fetchAdminRecords(adminKey, inspectedType);
-    } catch (err) {
-      alert((err as Error).message);
-    }
-  };
-
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200">
       {/* Top Header */}
@@ -379,21 +174,34 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Settings className="w-6 h-6 text-violet-600 dark:text-violet-400" />
-              <span>Platform Settings & Administration</span>
+              <span>Platform Settings</span>
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Manage appearance, playback preferences, account data, and Super Admin controls
+              Manage appearance, playback preferences, and personal account privacy
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onBackToDashboard}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 transition-opacity"
-        >
-          <span>Return to Jam</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenAdminPortal && (
+            <button
+              type="button"
+              onClick={onOpenAdminPortal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all shadow-sm"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Super Admin Portal</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onBackToDashboard}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 transition-opacity"
+          >
+            <span>Return to Jam</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Grid: Sidebar Tabs + Content Area */}
@@ -436,26 +244,21 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
             <span>Data Privacy & Delete</span>
           </button>
 
-          <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setActiveTab('admin')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${activeTab === 'admin'
-                ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
-                : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Shield className="w-4 h-4 shrink-0" />
-                <span>Super Admin</span>
-              </div>
-              {adminKey ? (
-                <Unlock className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <Lock className="w-3.5 h-3.5 shrink-0 opacity-70" />
-              )}
-            </button>
-          </div>
+          {onOpenAdminPortal && (
+            <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={onOpenAdminPortal}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/15 border border-amber-500/20"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Shield className="w-4 h-4 shrink-0" />
+                  <span>Super Admin Portal</span>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content Panel (9 cols) */}
@@ -796,441 +599,33 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                   </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* TAB 4: SUPER ADMIN PORTAL */}
-          {activeTab === 'admin' && (
-            <div className="space-y-6">
-              {/* Not Logged In as Super Admin */}
-              {!adminKey ? (
-                <div className="p-8 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-6 max-w-md mx-auto text-center shadow-lg">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center mx-auto shadow-md shadow-orange-500/30">
-                    <Shield className="w-7 h-7" />
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Super Admin Authentication
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Enter the Super Admin Passkey to manage AWS DynamoDB data, configure Google Auth keys, and access system reset tools.
-                    </p>
-                  </div>
-
-                  {adminAuthError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{adminAuthError}</span>
+              {/* Super Admin Notice Card */}
+              {onOpenAdminPortal && (
+                <div className="p-6 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                      <Shield className="w-4 h-4" />
                     </div>
-                  )}
-
-                  <form onSubmit={handleAdminLogin} className="space-y-3">
-                    <input
-                      type="password"
-                      required
-                      value={adminPasskeyInput}
-                      onChange={(e) => setAdminPasskeyInput(e.target.value)}
-                      placeholder="Enter Admin Passkey..."
-                      className="w-full px-3 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-center font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-md transition-all"
-                    >
-                      Unlock Super Admin Portal
-                    </button>
-                    <p className="text-[10px] text-slate-400 italic">
-                      Configured in .env via <code>ADMIN_SECRET</code> (default: <code>admin123</code>)
-                    </p>
-                  </form>
-                </div>
-              ) : (
-                /* Logged In Super Admin Dashboard */
-                <div className="space-y-6">
-                  {/* Admin Header Strip */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border border-amber-500/20">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                        <Shield className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                          Super Admin Control Center
-                        </h2>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Full system administration, database exports, and Google OAuth credentials
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          fetchAdminOverview(adminKey);
-                          fetchAdminRecords(adminKey, inspectedType);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-amber-500 transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Refresh</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAdminLogout}
-                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-red-600 bg-red-500/10 hover:bg-red-500/20 transition-colors"
-                      >
-                        Lock Admin
-                      </button>
-                    </div>
-                  </div>
-
-                  {adminMsg && (
-                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      <span>{adminMsg}</span>
-                    </div>
-                  )}
-
-                  {/* 1. Statistics Cards */}
-                  {adminOverview?.counts && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-1">
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="text-xs">Users</span>
-                          <Users className="w-4 h-4 text-blue-500" />
-                        </div>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.users ?? 0}
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-1">
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="text-xs">Jam Rooms</span>
-                          <Radio className="w-4 h-4 text-violet-500" />
-                        </div>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.rooms ?? 0}
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-1">
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="text-xs">Saved Playlists</span>
-                          <ListMusic className="w-4 h-4 text-emerald-500" />
-                        </div>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.playlists ?? 0}
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-1">
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="text-xs">Total Records</span>
-                          <Database className="w-4 h-4 text-amber-500" />
-                        </div>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">
-                          {adminOverview.counts.totalRecords ?? 0}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2. AWS DYNAMODB CLOUD DATABASE CONTROL */}
-                  <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Database className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                            AWS DynamoDB Cloud Database
-                          </h3>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Real-time serverless persistence in Amazon Web Services
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => fetchAdminOverview(adminKey)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-[#181B28] hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition-colors"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Refresh Status</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
-                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                        <span className="text-[10px] text-slate-400 block">Status</span>
-                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          Connected & Active
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                        <span className="text-[10px] text-slate-400 block">Table Name</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px] truncate block mt-0.5">
-                          {adminOverview?.system?.dynamoDb?.tableName || 'JamTogether_CoreTable'}
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                        <span className="text-[10px] text-slate-400 block">Region</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px] block mt-0.5">
-                          {adminOverview?.system?.dynamoDb?.region || 'us-east-1'}
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                        <span className="text-[10px] text-slate-400 block">Billing Mode</span>
-                        <span className="font-semibold text-violet-600 dark:text-violet-400 text-[11px] block mt-0.5">
-                          Pay-Per-Request (Free Tier)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. MANAGE GOOGLE AUTH CLIENT KEY */}
-                  <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <KeyRound className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                              Google OAuth 2.0 Credentials
-                            </h3>
-                            {adminOverview?.googleConfig?.isConfigured ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                Active for All Users (Global)
-                              </span>
-                            ) : adminOverview?.googleConfig?.isSecretEnteredAsId ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                Secret Saved — Client ID Needed
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20">
-                                Not Configured
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Configure Google Cloud Client ID & Secret for live Google authentication
-                          </p>
-                        </div>
-                      </div>
-                      <a
-                        href="https://console.cloud.google.com/apis/credentials"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                      >
-                        Google Console <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-
-                    {/* Detection notice if client secret was pasted into client id */}
-                    {(adminGoogleClientId.startsWith('GOCSPX-') || adminOverview?.googleConfig?.isSecretEnteredAsId) && (
-                      <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1.5 text-amber-800 dark:text-amber-300">
-                        <div className="flex items-center gap-1.5 font-semibold">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <span>Google Client Secret Detected ('GOCSPX-...')</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                          The key starting with <code>GOCSPX-</code> is a <strong>Google Client Secret</strong>, which Google rejects with <code>Error 401: invalid_client</code> when used as a Client ID.
-                          Google requires the <strong>Client ID</strong> (ends with <code>.apps.googleusercontent.com</code>) located right above the secret in Google Cloud Console.
-                        </p>
-                      </div>
-                    )}
-
-                    <form onSubmit={handleSaveGoogleClientId} className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                          <span>1. Google OAuth 2.0 Client ID (Required for Google Sign-In)</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Ends with .apps.googleusercontent.com</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={adminGoogleClientId}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val.trim().startsWith('GOCSPX-')) {
-                              setAdminGoogleClientSecret(val.trim());
-                              setAdminGoogleClientId('');
-                              setAdminMsg("Notice: Pasted key is a Client Secret (starts with 'GOCSPX-'). Automatically placed into Client Secret field below. Please copy your Client ID from Google Cloud Console.");
-                            } else {
-                              setAdminGoogleClientId(val);
-                            }
-                          }}
-                          placeholder="e.g. YOUR_CLIENT_ID.apps.googleusercontent.com"
-                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                          <span>2. Google OAuth 2.0 Client Secret</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Starts with GOCSPX-</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={adminGoogleClientSecret}
-                          onChange={(e) => setAdminGoogleClientSecret(e.target.value)}
-                          placeholder="e.g. GOCSPX-your_client_secret_here"
-                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      {/* Helper guide */}
-                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">Required Google Cloud OAuth Settings:</span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 pt-1 font-mono text-[10px]">
-                          <div>Authorized JavaScript origins: <code className="text-blue-600 dark:text-blue-400">http://localhost:3000</code></div>
-                          <div>Authorized redirect URIs: <code className="text-blue-600 dark:text-blue-400">http://localhost:3000</code></div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs pt-1">
-                        <span className="text-[11px] text-slate-500">
-                          Saves directly to server environment and <code>.env</code> file.
-                        </span>
-                        <button
-                          type="submit"
-                          disabled={savingGoogleConfig}
-                          className="px-4 py-2 text-xs font-semibold rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-all"
-                        >
-                          {savingGoogleConfig ? 'Saving...' : 'Update Google Credentials'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-
-                  {/* 4. RECORDS & USERS EXPLORER */}
-                  <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          Live Database Records Inspector
-                        </h3>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Inspect live records across DynamoDB single-table collections
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={inspectedType}
-                          onChange={(e) => {
-                            setInspectedType(e.target.value);
-                            fetchAdminRecords(adminKey, e.target.value);
-                          }}
-                          className="px-3 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                        >
-                          <option value="USER">Users</option>
-                          <option value="ROOM">JamRooms</option>
-                          <option value="PLAYLIST">UserPlaylists</option>
-                          <option value="HISTORY">ListeningHistory</option>
-                          <option value="QUEUE">MusicQueue</option>
-                          <option value="MESSAGE">ChatMessages</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-800 max-h-64 overflow-y-auto space-y-2 text-xs">
-                      {loadingRecords && (
-                        <div className="py-6 text-center text-slate-400">Loading records...</div>
-                      )}
-                      {!loadingRecords && inspectedRecords.length === 0 && (
-                        <div className="py-6 text-center text-slate-400">No records found for {inspectedType}.</div>
-                      )}
-                      {!loadingRecords &&
-                        inspectedRecords.map((r, i) => (
-                          <div
-                            key={r.PK + r.SK + i}
-                            className="p-2.5 rounded-lg bg-white dark:bg-[#11131C] border border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-2"
-                          >
-                            <div className="min-w-0 flex-1 font-mono text-[11px]">
-                              <p className="font-semibold text-slate-900 dark:text-white truncate">
-                                {r.data?.displayName || r.data?.name || r.data?.title || r.PK}
-                              </p>
-                              <p className="text-slate-500 text-[10px] truncate">
-                                PK: {r.PK} | SK: {r.SK}
-                              </p>
-                            </div>
-                            {r.entityType === 'USER' && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteUserByAdmin(r.data?.userId)}
-                                className="p-1 rounded text-red-500 hover:bg-red-500/10 text-xs"
-                                title="Force delete user"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-
-                  {/* 5. SUPER ADMIN DANGER ZONE: DATA WIPE & RESET */}
-                  <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border-2 border-red-500/30 space-y-4 shadow-sm">
                     <div>
-                      <h3 className="text-sm font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-red-500" />
-                        <span>Super Admin Data Wipe & Scratch Reset</span>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Super Admin Control Center
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Select a scope to wipe specific records or perform a complete factory reset to clean scratch.
+                        Need platform-wide database wipes, DynamoDB metrics, or Google OAuth keys?
                       </p>
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          Wipe Target Scope
-                        </label>
-                        <select
-                          value={wipeScope}
-                          onChange={(e: any) => setWipeScope(e.target.value)}
-                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                        >
-                          <option value="history">Wipe All Songs History Only</option>
-                          <option value="messages">Wipe All Chat Messages Only</option>
-                          <option value="rooms">Wipe All Jam Rooms & Queues</option>
-                          <option value="all">🔥 COMPLETE DATA RESET TO SCRATCH (All Tables)</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          Confirmation: Type <span className="font-mono text-red-600">DELETE</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={wipeConfirmInput}
-                          onChange={(e) => setWipeConfirmInput(e.target.value)}
-                          placeholder="Type DELETE..."
-                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-[#181B28] border border-red-500/40 text-slate-900 dark:text-white font-mono"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="button"
-                        disabled={wipingData || wipeConfirmInput.trim() !== 'DELETE'}
-                        onClick={handleWipeData}
-                        className={`px-5 py-2 text-xs font-bold rounded-xl text-white transition-all shadow-md ${wipeConfirmInput.trim() === 'DELETE'
-                          ? 'bg-red-600 hover:bg-red-500 cursor-pointer shadow-red-600/30'
-                          : 'bg-slate-400 dark:bg-slate-700 opacity-50 cursor-not-allowed'
-                          }`}
-                      >
-                        {wipingData ? 'Processing Wipe...' : 'Execute Data Wipe'}
-                      </button>
-                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={onOpenAdminPortal}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-sm transition-all"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>Open Super Admin Portal</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               )}

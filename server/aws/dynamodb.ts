@@ -5,6 +5,7 @@ import {
   GetCommand,
   QueryCommand,
   DeleteCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import fs from 'fs';
 import path from 'path';
@@ -219,24 +220,90 @@ class DynamoDBStore {
 
   /**
    * Resets database to empty state (scratch).
+   * Deletes all records from memory, local disk, and the remote AWS DynamoDB table.
    */
-  clearAll(): void {
+  async clearAll(): Promise<number> {
+    const totalLocal = this.items.size;
     this.items.clear();
     this.saveToDisk();
+
+    let remoteCount = 0;
+    if (docClient) {
+      try {
+        const scanRes = await docClient.send(
+          new ScanCommand({
+            TableName: TABLE_NAME,
+            ProjectionExpression: 'PK, SK',
+          })
+        );
+        const items = scanRes.Items || [];
+        for (const item of items) {
+          try {
+            await docClient.send(
+              new DeleteCommand({
+                TableName: TABLE_NAME,
+                Key: { PK: item.PK, SK: item.SK },
+              })
+            );
+            remoteCount++;
+          } catch {
+            // continue
+          }
+        }
+      } catch (e) {
+        console.warn('Failed remote DynamoDB complete table wipe:', (e as Error).message);
+      }
+    }
+    return Math.max(totalLocal, remoteCount);
   }
 
   /**
-   * Wipes all records of a specific entity type.
+   * Wipes all records of a specific entity type from memory, disk, and AWS DynamoDB.
    */
-  wipeByEntity(entityType: DynamoRecord['entityType']): number {
+  async wipeByEntity(entityType: DynamoRecord['entityType']): Promise<number> {
     let count = 0;
+    const toDeleteRemote: { PK: string; SK: string }[] = [];
     for (const [key, item] of this.items.entries()) {
       if (item.entityType === entityType) {
+        toDeleteRemote.push({ PK: item.PK, SK: item.SK });
         this.items.delete(key);
         count++;
       }
     }
     this.saveToDisk();
+
+    if (docClient) {
+      try {
+        const scanRes = await docClient.send(
+          new ScanCommand({
+            TableName: TABLE_NAME,
+            FilterExpression: 'entityType = :eType',
+            ExpressionAttributeValues: { ':eType': entityType },
+            ProjectionExpression: 'PK, SK',
+          })
+        );
+        const remoteItems = scanRes.Items || [];
+        for (const it of remoteItems) {
+          if (!toDeleteRemote.some((x) => x.PK === it.PK && x.SK === it.SK)) {
+            toDeleteRemote.push({ PK: it.PK, SK: it.SK });
+            count++;
+          }
+        }
+
+        for (const key of toDeleteRemote) {
+          try {
+            await docClient.send(
+              new DeleteCommand({
+                TableName: TABLE_NAME,
+                Key: key,
+              })
+            );
+          } catch {}
+        }
+      } catch (e) {
+        console.warn(`Failed remote DynamoDB wipe for entity ${entityType}:`, (e as Error).message);
+      }
+    }
     return count;
   }
 }

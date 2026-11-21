@@ -802,13 +802,46 @@ async function handleOfflineFallback<T>(
     if (!room) {
       room = globalRoomDiscovery.getDiscoveredRooms().find((r) => r.roomId === targetRoomId);
     }
+    // Also check cached joined rooms in localStorage
     if (!room) {
-      throw new Error(`Jam Room "${targetRoomId}" not found.`);
+      try {
+        const cached: JamRoom[] = JSON.parse(localStorage.getItem('jamtogether_cached_joined_rooms') || '[]');
+        room = cached.find((r) => r.roomId === targetRoomId);
+      } catch {}
+    }
+    // If still not found, wait briefly for MQTT discovery to catch up on page refresh
+    if (!room) {
+      try {
+        room = (await globalRoomDiscovery.waitForRoom(targetRoomId, 2200)) || undefined;
+      } catch {}
+    }
+    if (!room) {
+      throw new Error(`Jam Room "${targetRoomId}" not found or session was closed.`);
     }
 
     if (!room.queue) room.queue = [];
     if (!room.messages) room.messages = [];
     if (!room.members) room.members = [];
+    if (!room.playback) {
+      room.playback = {
+        roomId: room.roomId,
+        videoId: '',
+        status: 'paused',
+        positionSec: 0,
+        serverTimestamp: Date.now(),
+        initiatedByUserId: room.hostUserId || '',
+        initiatedByUsername: room.hostUsername || 'Host',
+        track: null,
+        historyIndex: 0,
+      };
+    }
+
+    // Cache the resolved room locally for instant access across page reloads
+    try {
+      let cached: JamRoom[] = JSON.parse(localStorage.getItem('jamtogether_cached_joined_rooms') || '[]');
+      cached = [room, ...cached.filter((r) => r.roomId !== room!.roomId)].slice(0, 10);
+      localStorage.setItem('jamtogether_cached_joined_rooms', JSON.stringify(cached));
+    } catch {}
 
     // Always merge persistent chat messages for this room across storage and cloud broker
     const persistedMsgs = loadPersistedRoomMessages(targetRoomId);
@@ -1525,12 +1558,20 @@ async function handleOfflineFallback<T>(
         r.messages = [];
       });
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(localRooms));
+      // Wipe all stored room chat logs in localStorage
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('jamtogether_room_messages_')) {
+          localStorage.removeItem(k);
+          deletedCount++;
+        }
+      });
     } else if (scope === 'rooms') {
       const localRooms = getCleanLocalRooms();
       deletedCount = localRooms.length;
       localRooms.forEach((r) => globalRoomDiscovery.unbroadcastRoom(r.roomId, r.roomCode));
       globalRoomDiscovery.clearAllRooms();
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
+      localStorage.removeItem('jamtogether_cached_joined_rooms');
     } else if (scope === 'all') {
       const localRooms = getCleanLocalRooms();
       deletedCount = localRooms.length;
@@ -1540,7 +1581,21 @@ async function handleOfflineFallback<T>(
       localStorage.removeItem(LOCAL_PLAYLISTS_KEY);
       localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify([]));
       localStorage.removeItem('jamtogether_local_friends');
-      localStorage.setItem('jamtogether_saved_google_accounts', JSON.stringify([]));
+      localStorage.removeItem('jamtogether_saved_google_accounts');
+      localStorage.removeItem('jamtogether_cached_joined_rooms');
+      localStorage.removeItem('jamtogether_local_users');
+      localStorage.removeItem(CURRENT_USER_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      // Clean all residual session and jam data keys
+      Object.keys(localStorage).forEach((k) => {
+        if (
+          k.startsWith('jamtogether_room_messages_') ||
+          k.startsWith('jamtogether_recent_') ||
+          k.startsWith('jamtogether_user_')
+        ) {
+          localStorage.removeItem(k);
+        }
+      });
       deletedCount = -1;
     }
 

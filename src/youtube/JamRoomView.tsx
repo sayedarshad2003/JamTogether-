@@ -138,9 +138,27 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     );
   }, [currentUser, inVoiceChat, isMuted, isSpeaking]);
 
-  // Fetch initial authoritative room state from API
+  // Fetch initial authoritative room state from API or Discovery
   const fetchRoomState = useCallback(async () => {
     try {
+      // 1. Check if room is already immediately available in memory discovery or local storage
+      const cachedDiscovery = globalRoomDiscovery.getDiscoveredRooms().find((r) => r.roomId === roomId);
+      if (cachedDiscovery) {
+        setRoom(cachedDiscovery);
+        setMembers(Array.isArray(cachedDiscovery.members) ? cachedDiscovery.members : []);
+        setQueue(Array.isArray(cachedDiscovery.queue) ? cachedDiscovery.queue : []);
+        setPlayback(
+          cachedDiscovery.playback || {
+            status: 'paused',
+            positionSec: 0,
+            updatedAt: Date.now(),
+            initiatedByUserId: cachedDiscovery.hostUserId || '',
+            initiatedByUsername: cachedDiscovery.hostUsername || 'Host',
+            track: null,
+          }
+        );
+      }
+
       const res = await apiRequest<{ room: JamRoom }>(`/api/rooms/${roomId}`);
       if (res?.room) {
         setRoom(res.room);
@@ -159,7 +177,16 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         persistRoomMessages(roomId, initialMerged);
         globalRoomDiscovery.broadcastRoomChat(roomId, initialMerged);
 
-        if (res.room.playback) setPlayback(res.room.playback);
+        setPlayback(
+          res.room.playback || {
+            status: 'paused',
+            positionSec: 0,
+            updatedAt: Date.now(),
+            initiatedByUserId: res.room.hostUserId || '',
+            initiatedByUsername: res.room.hostUsername || 'Host',
+            track: null,
+          }
+        );
         globalRoomDiscovery.broadcastRoom(res.room);
       }
     } catch (err) {
@@ -170,6 +197,34 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   useEffect(() => {
     fetchRoomState();
   }, [fetchRoomState]);
+
+  // Synchronize with global cross-device room discovery updates
+  useEffect(() => {
+    const unsub = globalRoomDiscovery.subscribe((discoveredRooms) => {
+      const match = discoveredRooms.find((r) => r.roomId === roomId);
+      if (match) {
+        setRoom((prev) => prev || match);
+        setPlayback((prev) => prev || match.playback || {
+          roomId: match.roomId,
+          videoId: '',
+          status: 'paused',
+          positionSec: 0,
+          serverTimestamp: Date.now(),
+          initiatedByUserId: match.hostUserId || '',
+          initiatedByUsername: match.hostUsername || 'Host',
+          track: null,
+          historyIndex: 0,
+        });
+        if (match.members && match.members.length > 0) {
+          setMembers((prev) => (prev.length === 0 ? match.members! : prev));
+        }
+        if (match.queue && match.queue.length > 0) {
+          setQueue((prev) => (prev.length === 0 ? match.queue! : prev));
+        }
+      }
+    });
+    return () => unsub();
+  }, [roomId]);
 
   // Keep chat messages in sync with cloud MQTT retained chat history
   useEffect(() => {
@@ -1017,8 +1072,50 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
 
   if (!room || !playback) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
-        <div className="h-96 rounded-2xl bg-slate-100 dark:bg-[#11131C] animate-pulse border border-slate-200 dark:border-slate-800" />
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        {toastError ? (
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-xl font-bold">
+              !
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Unable to Connect to Room</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">{toastError}</p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setToastError(null);
+                  fetchRoomState();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 transition-colors shadow-sm"
+              >
+                Retry Connecting
+              </button>
+              <button
+                type="button"
+                onClick={onLeaveRoom}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-8 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="w-10 h-10 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Connecting to Jam Room...</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Syncing with host audio and live playlist</p>
+            </div>
+            <button
+              type="button"
+              onClick={onLeaveRoom}
+              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline pt-2"
+            >
+              Cancel and return to Dashboard
+            </button>
+          </div>
+        )}
       </div>
     );
   }

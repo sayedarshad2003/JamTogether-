@@ -543,17 +543,16 @@ async function startServer() {
 
     let deletedCount = 0;
     if (scope === 'history') {
-      deletedCount = dynamoStore.wipeByEntity('HISTORY');
+      deletedCount = await dynamoStore.wipeByEntity('HISTORY');
     } else if (scope === 'messages') {
-      deletedCount = dynamoStore.wipeByEntity('MESSAGE');
+      deletedCount = await dynamoStore.wipeByEntity('MESSAGE');
     } else if (scope === 'rooms') {
-      deletedCount += dynamoStore.wipeByEntity('ROOM');
-      deletedCount += dynamoStore.wipeByEntity('QUEUE');
-      deletedCount += dynamoStore.wipeByEntity('PLAYBACK');
-      deletedCount += dynamoStore.wipeByEntity('MEMBER');
+      deletedCount += await dynamoStore.wipeByEntity('ROOM');
+      deletedCount += await dynamoStore.wipeByEntity('QUEUE');
+      deletedCount += await dynamoStore.wipeByEntity('PLAYBACK');
+      deletedCount += await dynamoStore.wipeByEntity('MEMBER');
     } else if (scope === 'all') {
-      dynamoStore.clearAll();
-      deletedCount = -1;
+      deletedCount = await dynamoStore.clearAll();
     } else {
       res.status(400).json({ error: 'Invalid wipe scope.' });
       return;
