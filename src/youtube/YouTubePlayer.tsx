@@ -166,6 +166,9 @@ export function YouTubePlayer({
       playerVars: {
         autoplay: latestPlaybackRef.current.status === 'playing' ? 1 : 0,
         controls: 0,
+        disablekb: 1,
+        fs: 0,
+        iv_load_policy: 3,
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
@@ -411,8 +414,28 @@ export function YouTubePlayer({
   return (
     <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
       {/* Embedded 16:9 YouTube IFrame Viewport */}
-      <div className="relative aspect-video w-full bg-black overflow-hidden">
-        <div ref={mountWrapperRef} className="w-full h-full" />
+      <div className="relative aspect-video w-full bg-black overflow-hidden select-none">
+        {/* Iframe Mount Point (Clicks blocked at iframe level) */}
+        <div ref={mountWrapperRef} className="w-full h-full pointer-events-none" />
+
+        {/* Complete Invisible Shield Layer (Blocks any click, pause, drag, context menu, or navigation from video display) */}
+        <div
+          className="absolute inset-0 z-10 bg-transparent select-none cursor-default"
+          style={{ pointerEvents: 'auto' }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          aria-hidden="true"
+        />
 
         {/* Embed / load error overlay */}
         {playerError && (
@@ -448,7 +471,7 @@ export function YouTubePlayer({
         )}
 
         {/* Sleek Top Overlay Bar */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 p-3 bg-gradient-to-b from-black/80 via-black/25 to-transparent flex items-center justify-between text-xs text-white">
+        <div className="pointer-events-none absolute inset-x-0 top-0 p-3 bg-gradient-to-b from-black/80 via-black/25 to-transparent flex items-center justify-between text-xs text-white z-20">
           <div className="flex items-center gap-2">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-[11px] font-semibold text-white">
               {playback.status === 'playing' ? (
