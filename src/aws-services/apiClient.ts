@@ -7,6 +7,7 @@ import {
   Friendship,
   ListeningHistoryEntry,
   UserPlaylist,
+  RoomInviteNotification,
 } from '../types/jam.ts';
 import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 import {
@@ -628,6 +629,60 @@ async function handleOfflineFallback<T>(
     if (currentUser) userMap.set(currentUser.userId, currentUser);
     allSavedUsers.forEach((u) => {
       if (u.userId) userMap.set(u.userId, u);
+    });
+
+    // Seed default community listeners if directory has few users
+    const defaultCommunityUsers: UserProfile[] = [
+      {
+        userId: 'usr_comm_aria',
+        username: 'AriaBeats',
+        email: 'aria.chen@jamtogether.live',
+        displayName: 'Aria Chen',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=faces',
+        bio: 'Synthwave, Lo-Fi beats, and late-night vinyl collector. Always up for an album session.',
+        favoriteGenres: ['Synthwave', 'Lo-Fi', 'Electronic', 'Indie'],
+        status: 'online',
+        createdAt: Date.now() - 86400000 * 14,
+      },
+      {
+        userId: 'usr_comm_marcus',
+        username: 'MarcusGrooves',
+        email: 'marcus.m@jamtogether.live',
+        displayName: 'Marcus Miller',
+        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=faces',
+        bio: 'Neo-soul, funk, and 90s boom bap enthusiast. Jam host and bass player.',
+        favoriteGenres: ['Neo-Soul', 'Jazz', 'Hip-Hop', 'Funk'],
+        status: 'online',
+        createdAt: Date.now() - 86400000 * 20,
+      },
+      {
+        userId: 'usr_comm_elena',
+        username: 'ElenaHarmony',
+        email: 'elena.r@jamtogether.live',
+        displayName: 'Elena Rostova',
+        avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=faces',
+        bio: 'Deep house, melodic techno, and ambient soundscapes. Tuning in worldwide.',
+        favoriteGenres: ['Deep House', 'Techno', 'Ambient', 'Chillout'],
+        status: 'online',
+        createdAt: Date.now() - 86400000 * 30,
+      },
+      {
+        userId: 'usr_comm_kai',
+        username: 'KaiTanaka',
+        email: 'kai.t@jamtogether.live',
+        displayName: 'Kai Tanaka',
+        avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=faces',
+        bio: 'City pop, Tokyo indie rock, and Japanese jazz fusion curator.',
+        favoriteGenres: ['City Pop', 'Indie Rock', 'Jazz Fusion'],
+        status: 'online',
+        createdAt: Date.now() - 86400000 * 7,
+      },
+    ];
+
+    defaultCommunityUsers.forEach((cu) => {
+      if (!userMap.has(cu.userId) && (!currentUser || currentUser.username !== cu.username)) {
+        userMap.set(cu.userId, cu);
+      }
     });
 
     return {
@@ -1265,17 +1320,72 @@ async function handleOfflineFallback<T>(
     }
 
     if (endpoint === '/api/friends/add' && method === 'POST') {
-      const { friendUsername } = body;
-      const cleanUsername = (friendUsername || '').replace(/^@/, '').trim();
+      const rawUser = body.usernameOrId || body.friendUsername || body.username || '';
+      const cleanUsername = String(rawUser).replace(/^@/, '').trim();
       let users: any[] = [];
       try {
         users = JSON.parse(localStorage.getItem('jamtogether_saved_google_accounts') || '[]');
       } catch {}
-      const targetUser = users.find(
+      let targetUser = users.find(
         (u: any) =>
+          u.userId === cleanUsername ||
           u.username?.toLowerCase() === cleanUsername.toLowerCase() ||
           u.email?.toLowerCase().startsWith(cleanUsername.toLowerCase())
       );
+      if (!targetUser) {
+        const defaultCommunityUsers: UserProfile[] = [
+          {
+            userId: 'usr_comm_aria',
+            username: 'AriaBeats',
+            email: 'aria.chen@jamtogether.live',
+            displayName: 'Aria Chen',
+            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=faces',
+            bio: 'Synthwave, Lo-Fi beats, and late-night vinyl collector. Always up for an album session.',
+            favoriteGenres: ['Synthwave', 'Lo-Fi', 'Electronic', 'Indie'],
+            status: 'online',
+            createdAt: Date.now() - 86400000 * 14,
+          },
+          {
+            userId: 'usr_comm_marcus',
+            username: 'MarcusGrooves',
+            email: 'marcus.m@jamtogether.live',
+            displayName: 'Marcus Miller',
+            avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=faces',
+            bio: 'Neo-soul, funk, and 90s boom bap enthusiast. Jam host and bass player.',
+            favoriteGenres: ['Neo-Soul', 'Jazz', 'Hip-Hop', 'Funk'],
+            status: 'online',
+            createdAt: Date.now() - 86400000 * 20,
+          },
+          {
+            userId: 'usr_comm_elena',
+            username: 'ElenaHarmony',
+            email: 'elena.r@jamtogether.live',
+            displayName: 'Elena Rostova',
+            avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=faces',
+            bio: 'Deep house, melodic techno, and ambient soundscapes. Tuning in worldwide.',
+            favoriteGenres: ['Deep House', 'Techno', 'Ambient', 'Chillout'],
+            status: 'online',
+            createdAt: Date.now() - 86400000 * 30,
+          },
+          {
+            userId: 'usr_comm_kai',
+            username: 'KaiTanaka',
+            email: 'kai.t@jamtogether.live',
+            displayName: 'Kai Tanaka',
+            avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=faces',
+            bio: 'City pop, Tokyo indie rock, and Japanese jazz fusion curator.',
+            favoriteGenres: ['City Pop', 'Indie Rock', 'Jazz Fusion'],
+            status: 'online',
+            createdAt: Date.now() - 86400000 * 7,
+          },
+        ];
+        targetUser = defaultCommunityUsers.find(
+          (u) =>
+            u.userId === cleanUsername ||
+            u.username.toLowerCase() === cleanUsername.toLowerCase() ||
+            u.displayName.toLowerCase() === cleanUsername.toLowerCase()
+        );
+      }
       const newFriend: Friendship = {
         userId: 'current_user',
         friendId: targetUser?.userId || 'usr_f_' + Math.random().toString(36).substring(2, 7),
@@ -1284,12 +1394,36 @@ async function handleOfflineFallback<T>(
         friendAvatarUrl: targetUser?.avatarUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${cleanUsername}`,
         status: 'accepted',
         friendOnlineStatus: 'online',
+        isCloseFriend: false,
         updatedAt: Date.now(),
       };
-      friends = friends.filter((f) => f.friendUsername !== newFriend.friendUsername);
+      friends = friends.filter(
+        (f) =>
+          f.friendUsername.toLowerCase() !== newFriend.friendUsername.toLowerCase() &&
+          f.friendId !== newFriend.friendId
+      );
       friends.push(newFriend);
       localStorage.setItem('jamtogether_local_friends', JSON.stringify(friends));
       return { friendship: newFriend } as any;
+    }
+
+    if (endpoint === '/api/friends/toggle-close' && method === 'POST') {
+      const { friendId } = body;
+      friends = friends.map((f) => {
+        if (f.friendId === friendId || f.friendUsername === friendId) {
+          return { ...f, isCloseFriend: !f.isCloseFriend, updatedAt: Date.now() };
+        }
+        return f;
+      });
+      localStorage.setItem('jamtogether_local_friends', JSON.stringify(friends));
+      const updated = friends.find((f) => f.friendId === friendId || f.friendUsername === friendId);
+      return { success: true, friendship: updated } as any;
+    }
+
+    if (endpoint === '/api/friends/invite' && method === 'POST') {
+      const invite = body as RoomInviteNotification;
+      globalRoomDiscovery.sendRoomInvite(invite);
+      return { success: true, invite } as any;
     }
 
     if (method === 'DELETE') {

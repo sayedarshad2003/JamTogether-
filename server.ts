@@ -1873,6 +1873,45 @@ async function startServer() {
     res.json({ friendship });
   });
 
+  // Delete / Remove Friend
+  app.delete('/api/friends/:friendId', async (req: Request, res: Response) => {
+    const user = await verifyCognitoToken(req.headers.authorization);
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { friendId } = req.params;
+    await dynamoStore.delete(`USER#${user.userId}`, `FRIEND#${friendId}`);
+    await dynamoStore.delete(`USER#${friendId}`, `FRIEND#${user.userId}`);
+    res.json({ success: true, message: 'Friend removed successfully.' });
+  });
+
+  // Toggle Close Friend
+  app.post('/api/friends/toggle-close', async (req: Request, res: Response) => {
+    const user = await verifyCognitoToken(req.headers.authorization);
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const { friendId } = req.body;
+    const existing = await dynamoStore.get(`USER#${user.userId}`, `FRIEND#${friendId}`);
+    if (!existing) {
+      res.status(404).json({ error: 'Friendship not found.' });
+      return;
+    }
+    const friendship = existing.data as Friendship;
+    friendship.isCloseFriend = !friendship.isCloseFriend;
+    friendship.updatedAt = Date.now();
+    await dynamoStore.put({
+      PK: `USER#${user.userId}`,
+      SK: `FRIEND#${friendId}`,
+      entityType: 'FRIENDSHIP',
+      data: friendship,
+      updatedAt: Date.now(),
+    });
+    res.json({ success: true, friendship });
+  });
+
   // ==========================================================================
   // 8. YOUTUBE SEARCH API PROXY & AWS DYNAMODB ARCHITECTURE INSPECTOR
   // ==========================================================================

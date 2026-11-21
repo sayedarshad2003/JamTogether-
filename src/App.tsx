@@ -24,6 +24,7 @@ import { JamRoomView } from './rooms/JamRoomView.tsx';
 import { SettingsView } from './settings/SettingsView.tsx';
 import { SuperAdminView } from './admin/SuperAdminView.tsx';
 import { CreateRoomModal, JoinRoomModal } from './rooms/CreateJoinModals.tsx';
+import { NotificationToast, NotificationBell } from './social/NotificationToast.tsx';
 import { apiRequest } from './aws-services/apiClient.ts';
 import { globalRoomDiscovery } from './realtime/globalDiscovery.ts';
 import {
@@ -351,6 +352,9 @@ function JamTogetherShell() {
 
         {/* Zone 3: Header Actions (Mobile & Desktop) */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Real-time Room Invitations Bell */}
+          <NotificationBell currentUser={user} onJoinRoom={enterRoom} />
+
           {/* Quick theme toggle on mobile */}
           <button
             type="button"
@@ -400,6 +404,9 @@ function JamTogetherShell() {
         </div>
       </header>
 
+      {/* Global Real-Time Room Invitation Toast */}
+      <NotificationToast currentUser={user} onJoinRoom={enterRoom} />
+
       {/* Main Content Area */}
       <main className={`flex-1 ${!activeRoomId ? 'pb-24 md:pb-8' : 'pb-6'}`}>
         {activeRoomId ? (
@@ -436,6 +443,7 @@ function JamTogetherShell() {
               <JamRoomView
                 roomId={activeRoomId}
                 currentUser={user}
+                friends={friends}
                 onLeaveRoom={leaveRoom}
               />
             </ErrorBoundary>
@@ -610,6 +618,8 @@ function JamTogetherShell() {
       <CreateRoomModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
+        currentUser={user}
+        friends={friends}
         onCreated={(room) => {
           loadDashboard();
           enterRoom(room.roomId);

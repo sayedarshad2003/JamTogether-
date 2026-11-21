@@ -19,6 +19,10 @@ import {
   Flame,
   Lock,
   X,
+  Star,
+  UserMinus,
+  Eye,
+  Search,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -28,6 +32,7 @@ import {
   UserPlaylist,
 } from '../types/jam.ts';
 import { apiRequest } from '../aws-services/apiClient.ts';
+import { UserProfileModal } from '../social/UserProfileModal.tsx';
 import heroImage from '../assets/images/hero_listening_lounge_1794736637703.jpg';
 
 interface DashboardViewProps {
@@ -68,6 +73,9 @@ export function DashboardView({
   const [friendStatusMsg, setFriendStatusMsg] = useState<string | null>(null);
   const [addingFriend, setAddingFriend] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [selectedProfileUser, setSelectedProfileUser] = useState<any | null>(null);
+  const [communitySearch, setCommunitySearch] = useState('');
+  const [togglingFriendId, setTogglingFriendId] = useState<string | null>(null);
 
   // Private Room Passcode Verification State
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<JamRoom | null>(null);
@@ -171,6 +179,33 @@ export function DashboardView({
       setFriendStatusMsg((err as Error).message);
     } finally {
       setAddingFriend(false);
+    }
+  };
+
+  const handleToggleCloseFriend = async (friendId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setTogglingFriendId(friendId);
+    try {
+      await apiRequest('/api/friends/toggle-close', {
+        method: 'POST',
+        body: JSON.stringify({ friendId }),
+      });
+      await onRefreshDashboard();
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setTogglingFriendId(null);
+    }
+  };
+
+  const handleRemoveFriend = async (friendId: string, username: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!window.confirm(`Are you sure you want to remove @${username} from your friends?`)) return;
+    try {
+      await apiRequest(`/api/friends/${friendId}`, { method: 'DELETE' });
+      await onRefreshDashboard();
+    } catch (err) {
+      alert((err as Error).message);
     }
   };
 
@@ -603,80 +638,361 @@ export function DashboardView({
 
       {/* 5. Filter Content: FRIENDS & SOCIAL */}
       {activeFilter === 'friends' && (
-        <section className="space-y-4 max-w-xl">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-500" />
-              <span>Connected Friends ({friends.length})</span>
-            </h2>
+        <section className="space-y-6 max-w-4xl">
+          {/* Section Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-violet-500" />
+                <span>Friends & Community Listeners</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Connect with companions, pin your close friends, and invite them directly into live listening rooms.
+              </p>
+            </div>
+
+            {/* Manual Quick Add Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAddFriend(friendInput);
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={friendInput}
+                onChange={(e) => setFriendInput(e.target.value)}
+                placeholder="Enter exact @username..."
+                className="w-48 sm:w-56 px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+              />
+              <button
+                type="submit"
+                disabled={addingFriend || !friendInput.trim()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 transition-all shrink-0 shadow-sm"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>{addingFriend ? 'Adding...' : 'Add'}</span>
+              </button>
+            </form>
           </div>
 
-          {/* Add Friend Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleAddFriend(friendInput);
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={friendInput}
-              onChange={(e) => setFriendInput(e.target.value)}
-              placeholder="Enter friend's username..."
-              className="flex-1 px-4 py-2.5 text-xs rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
-            />
-            <button
-              type="submit"
-              disabled={addingFriend || !friendInput.trim()}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 transition-all shrink-0"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add</span>
-            </button>
-          </form>
-
           {friendStatusMsg && (
-            <p className="text-xs text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
-              <Check className="w-3.5 h-3.5" />
+            <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600 dark:text-violet-300 flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 shrink-0" />
               <span>{friendStatusMsg}</span>
-            </p>
+            </div>
           )}
 
-          {friends.length === 0 ? (
-            <div className="p-8 text-center rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1">
-              <p>No friends added yet.</p>
-              <p className="text-[11px] text-slate-400">Add friends by their username to connect live.</p>
+          {/* Sub-section 1: Connected Friends (Close friends on TOP ⭐) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-violet-500" />
+                <span>Connected Friends ({friends.length})</span>
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                Close friends (⭐) are pinned to the top of your list
+              </span>
             </div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-[#11131C] rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-              {friends.map((f) => (
-                <div key={f.friendId} className="flex items-center justify-between p-3.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={
-                        f.friendAvatarUrl ||
-                        `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
-                          f.friendDisplayName || f.friendUsername
-                        )}`
-                      }
-                      alt={f.friendDisplayName}
-                      className="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {f.friendDisplayName}
-                      </p>
-                      <p className="text-[11px] text-slate-500 truncate">@{f.friendUsername}</p>
-                    </div>
+
+            {friends.length === 0 ? (
+              <div className="p-6 text-center rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1">
+                <p className="font-semibold text-slate-700 dark:text-slate-300">No friends added yet.</p>
+                <p className="text-[11px] text-slate-400">Search the community below and click "Add Friend" to start connecting!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(() => {
+                  const sorted = [...friends].sort((a, b) => {
+                    if (a.isCloseFriend && !b.isCloseFriend) return -1;
+                    if (!a.isCloseFriend && b.isCloseFriend) return 1;
+                    return a.friendDisplayName.localeCompare(b.friendDisplayName);
+                  });
+                  return sorted.map((f) => {
+                    const avatar =
+                      f.friendAvatarUrl ||
+                      `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
+                        f.friendDisplayName || f.friendUsername
+                      )}`;
+
+                    return (
+                      <div
+                        key={f.friendId}
+                        onClick={() =>
+                          setSelectedProfileUser({
+                            userId: f.friendId,
+                            username: f.friendUsername,
+                            displayName: f.friendDisplayName,
+                            avatarUrl: f.friendAvatarUrl,
+                            status: f.friendOnlineStatus,
+                            currentRoomId: f.friendCurrentRoomId,
+                            currentRoomName: f.friendCurrentRoomName,
+                            isCloseFriend: f.isCloseFriend,
+                          })
+                        }
+                        className={`cursor-pointer group p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 shadow-sm hover:shadow-md ${
+                          f.isCloseFriend
+                            ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-amber-500/40 hover:border-amber-500'
+                            : 'bg-white dark:bg-[#11131C] border-slate-200 dark:border-slate-800 hover:border-violet-500/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="relative shrink-0">
+                            <img
+                              src={avatar}
+                              alt={f.friendDisplayName}
+                              className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                            />
+                            <span
+                              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#11131C] ${
+                                f.friendOnlineStatus === 'in_room'
+                                  ? 'bg-purple-500'
+                                  : f.friendOnlineStatus === 'offline'
+                                  ? 'bg-slate-400'
+                                  : 'bg-emerald-500'
+                              }`}
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-violet-500 transition-colors">
+                                {f.friendDisplayName}
+                              </p>
+                              {f.isCloseFriend && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-400/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                  ⭐ Close
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              @{f.friendUsername}
+                            </p>
+                            {f.friendCurrentRoomName && (
+                              <p className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold truncate flex items-center gap-1 mt-0.5">
+                                <Radio className="w-2.5 h-2.5 animate-pulse" />
+                                <span>In {f.friendCurrentRoomName}</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Friend Action Icons */}
+                        <div
+                          className="flex items-center gap-1 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            disabled={togglingFriendId === f.friendId}
+                            onClick={(e) => handleToggleCloseFriend(f.friendId, e)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              f.isCloseFriend
+                                ? 'text-amber-500 hover:text-amber-600 bg-amber-500/10'
+                                : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                            title={
+                              f.isCloseFriend
+                                ? 'Remove from Close Friends'
+                                : 'Make Close Friend (Pin to Top)'
+                            }
+                          >
+                            <Star
+                              className={`w-4 h-4 ${
+                                f.isCloseFriend ? 'fill-amber-400' : ''
+                              }`}
+                            />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedProfileUser({
+                                userId: f.friendId,
+                                username: f.friendUsername,
+                                displayName: f.friendDisplayName,
+                                avatarUrl: f.friendAvatarUrl,
+                                status: f.friendOnlineStatus,
+                                currentRoomId: f.friendCurrentRoomId,
+                                currentRoomName: f.friendCurrentRoomName,
+                                isCloseFriend: f.isCloseFriend,
+                              })
+                            }
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-violet-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="View Full Profile"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              handleRemoveFriend(f.friendId, f.friendUsername, e)
+                            }
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            title="Remove Friend"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Sub-section 2: Discover Friends & Community Directory */}
+          <div className="space-y-3 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>Discover Friends & Community Directory</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Search listeners across JamTogether to connect and listen in sync.
+                </p>
+              </div>
+
+              {/* Filter search bar */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={communitySearch}
+                  onChange={(e) => setCommunitySearch(e.target.value)}
+                  placeholder="Filter community by name or vibe..."
+                  className="w-full pl-8 pr-3.5 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+            </div>
+
+            {/* Community User Cards Grid */}
+            {(() => {
+              const query = communitySearch.trim().toLowerCase();
+              const friendUsernames = new Set(
+                friends.map((f) => f.friendUsername.toLowerCase())
+              );
+              const friendIds = new Set(friends.map((f) => f.friendId));
+
+              // Exclude currently logged in user
+              const eligibleUsers = allUsers.filter(
+                (u) =>
+                  !user ||
+                  (u.userId !== user.userId &&
+                    u.username?.toLowerCase() !== user.username?.toLowerCase())
+              );
+
+              const matchingUsers = eligibleUsers.filter((u) => {
+                if (!query) return true;
+                return (
+                  u.displayName?.toLowerCase().includes(query) ||
+                  u.username?.toLowerCase().includes(query) ||
+                  u.bio?.toLowerCase().includes(query) ||
+                  (u.favoriteGenres &&
+                    u.favoriteGenres.some((g) => g.toLowerCase().includes(query)))
+                );
+              });
+
+              if (matchingUsers.length === 0) {
+                return (
+                  <div className="p-8 text-center rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-3">
+                    <p className="text-xs text-slate-500">
+                      No registered user found matching "{communitySearch}".
+                    </p>
+                    {communitySearch.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddFriend(communitySearch)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 shadow-md transition-all"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Add "@{communitySearch.replace(/^@/, '')}" as Friend</span>
+                      </button>
+                    )}
                   </div>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                    Connected
-                  </span>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {matchingUsers.map((commUser) => {
+                    const isAlreadyFriend =
+                      friendUsernames.has(commUser.username.toLowerCase()) ||
+                      friendIds.has(commUser.userId);
+                    const avatar =
+                      commUser.avatarUrl ||
+                      `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
+                        commUser.displayName || commUser.username || 'user'
+                      )}`;
+
+                    return (
+                      <div
+                        key={commUser.userId}
+                        onClick={() => setSelectedProfileUser(commUser)}
+                        className="cursor-pointer group p-3.5 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 hover:border-violet-500/40 shadow-sm transition-all flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <img
+                            src={avatar}
+                            alt={commUser.displayName}
+                            className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-violet-500 transition-colors">
+                              {commUser.displayName || commUser.username}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              @{commUser.username}
+                            </p>
+                            {commUser.favoriteGenres &&
+                              commUser.favoriteGenres.length > 0 && (
+                                <p className="text-[10px] text-violet-500 truncate mt-0.5">
+                                  {commUser.favoriteGenres.slice(0, 2).join(' · ')}
+                                </p>
+                              )}
+                          </div>
+                        </div>
+
+                        <div
+                          className="flex items-center gap-1.5 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProfileUser(commUser)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-violet-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="View Profile"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
+                          {isAlreadyFriend ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <Check className="w-3 h-3" />
+                              <span>Connected</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleAddFriend(commUser.username)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 shadow-sm transition-all"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>Add</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })()}
+          </div>
         </section>
       )}
 
@@ -801,6 +1117,17 @@ export function DashboardView({
           </div>
         </div>
       )}
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={Boolean(selectedProfileUser)}
+        onClose={() => setSelectedProfileUser(null)}
+        targetUser={selectedProfileUser}
+        currentUser={user}
+        friends={friends}
+        onRefreshDashboard={onRefreshDashboard}
+        onJoinRoom={onJoinRoom}
+      />
     </div>
   );
 }

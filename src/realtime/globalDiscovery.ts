@@ -8,7 +8,7 @@
  * Backed by EMQX Public WebSocket MQTT Broker (wss://broker.emqx.io:8084/mqtt) with Retained Messages.
  */
 
-import { JamRoom, ChatMessage } from '../types/jam.ts';
+import { JamRoom, ChatMessage, RoomInviteNotification } from '../types/jam.ts';
 
 function textToBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
@@ -105,10 +105,22 @@ class GlobalRoomDiscoveryService {
   private roomChatMap = new Map<string, ChatMessage[]>();
   private listeners = new Set<(rooms: JamRoom[]) => void>();
   private chatListeners = new Map<string, Set<(messages: ChatMessage[]) => void>>();
+  private notificationListeners = new Map<string, Set<(notifications: RoomInviteNotification[]) => void>>();
+  private broadcastChannel: BroadcastChannel | null = null;
   private reconnectTimer: number | null = null;
   private pingTimer: number | null = null;
 
   constructor() {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        this.broadcastChannel = new BroadcastChannel('jamtogether_invites_channel');
+        this.broadcastChannel.onmessage = (ev) => {
+          if (ev.data?.type === 'ROOM_INVITE' && ev.data?.invite) {
+            this.handleIncomingInvite(ev.data.invite.targetUserId, ev.data.invite);
+          }
+        };
+      } catch {}
+    }
     this.connect();
   }
 
@@ -262,6 +274,8 @@ class GlobalRoomDiscoveryService {
             this.socket.send(makeSubscribePacket('jamtogether/codes/+') as any);
             // Subscribe to retained room chat histories across all rooms
             this.socket.send(makeSubscribePacket('jamtogether/chat/rooms/+') as any);
+            // Subscribe to real-time room invitations for all users
+            this.socket.send(makeSubscribePacket('jamtogether/notifications/+') as any);
 
             // Explicitly purge legacy dummy/mock retained rooms and codes from public broker
             const legacyPurgeTargets = [
@@ -410,6 +424,20 @@ class GlobalRoomDiscoveryService {
               }
             } catch {}
           }
+
+          // 4. Room Notifications topic: jamtogether/notifications/{userId}
+          if (topic.startsWith('jamtogether/notifications/')) {
+            const parts = topic.split('/');
+            const targetUserId = parts[parts.length - 1];
+            if (payload && payload.trim() && payload !== 'null') {
+              try {
+                const invite = JSON.parse(payload) as RoomInviteNotification;
+                if (invite && invite.inviteId) {
+                  this.handleIncomingInvite(targetUserId, invite);
+                }
+              } catch {}
+            }
+          }
         } catch {
           // ignore malformed messages
         }
@@ -524,6 +552,154 @@ class GlobalRoomDiscoveryService {
         this.socket.send(makePublishPacket(`jamtogether/codes/${roomCode.toUpperCase()}`, '', true) as any);
       }
     } catch {}
+  }
+
+  /**
+   * Internal processor for incoming room invite notifications.
+   */
+  private handleIncomingInvite(targetUserId: string, invite: RoomInviteNotification) {
+    if (!targetUserId || !invite?.inviteId) return;
+    try {
+      const storageKey = `jamtogether_invites_${targetUserId}`;
+      let list: RoomInviteNotification[] = [];
+      try {
+        list = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      } catch {
+        list = [];
+      }
+      if (!list.some((item) => item.inviteId === invite.inviteId)) {
+        list.unshift(invite);
+        if (list.length > 50) list = list.slice(0, 50);
+        localStorage.setItem(storageKey, JSON.stringify(list));
+      }
+      const listeners = this.notificationListeners.get(targetUserId);
+      if (listeners) {
+        listeners.forEach((l) => {
+          try {
+            l(list);
+          } catch (err) {
+            console.warn('Notification listener error:', err);
+          }
+        });
+      }
+      const wildcards = this.notificationListeners.get('*');
+      if (wildcards) {
+        wildcards.forEach((l) => {
+          try {
+            l(list);
+          } catch {}
+        });
+      }
+    } catch (err) {
+      console.warn('Error handling incoming invite:', err);
+    }
+  }
+
+  /**
+   * Sends a real-time room invitation to a friend across all connected devices.
+   */
+  public sendRoomInvite(invite: RoomInviteNotification) {
+    if (!invite || !invite.targetUserId) return;
+    this.handleIncomingInvite(invite.targetUserId, invite);
+
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: 'ROOM_INVITE', invite });
+      } catch {}
+    }
+
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      try {
+        const payloadStr = JSON.stringify(invite);
+        const pkt = makePublishPacket(`jamtogether/notifications/${invite.targetUserId}`, payloadStr, false);
+        this.socket.send(pkt as any);
+      } catch (err) {
+        console.warn('Failed to publish room invite over MQTT:', err);
+      }
+    }
+  }
+
+  /**
+   * Retrieves all room invitations for a user.
+   */
+  public getNotifications(userId: string): RoomInviteNotification[] {
+    if (!userId) return [];
+    try {
+      return JSON.parse(localStorage.getItem(`jamtogether_invites_${userId}`) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Subscribes to real-time room invitations for a specific user ID.
+   */
+  public subscribeNotifications(
+    userId: string,
+    listener: (notifications: RoomInviteNotification[]) => void
+  ): () => void {
+    if (!this.notificationListeners.has(userId)) {
+      this.notificationListeners.set(userId, new Set());
+    }
+    this.notificationListeners.get(userId)!.add(listener);
+
+    listener(this.getNotifications(userId));
+
+    return () => {
+      const set = this.notificationListeners.get(userId);
+      if (set) {
+        set.delete(listener);
+        if (set.size === 0) {
+          this.notificationListeners.delete(userId);
+        }
+      }
+    };
+  }
+
+  /**
+   * Dismisses an invitation by ID.
+   */
+  public dismissNotification(userId: string, inviteId: string) {
+    if (!userId) return;
+    const storageKey = `jamtogether_invites_${userId}`;
+    let list: RoomInviteNotification[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      list = list.filter((i) => i.inviteId !== inviteId);
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    } catch {}
+
+    const listeners = this.notificationListeners.get(userId);
+    if (listeners) {
+      listeners.forEach((l) => {
+        try {
+          l(list);
+        } catch {}
+      });
+    }
+  }
+
+  /**
+   * Marks an invitation as read.
+   */
+  public markNotificationRead(userId: string, inviteId: string) {
+    if (!userId) return;
+    const storageKey = `jamtogether_invites_${userId}`;
+    let list: RoomInviteNotification[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      list = list.map((i) => (i.inviteId === inviteId ? { ...i, read: true } : i));
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    } catch {}
+
+    const listeners = this.notificationListeners.get(userId);
+    if (listeners) {
+      listeners.forEach((l) => {
+        try {
+          l(list);
+        } catch {}
+      });
+    }
   }
 
   /**

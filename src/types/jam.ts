@@ -9,6 +9,7 @@ export interface UserProfile {
   favoriteGenres: string[];
   status: 'online' | 'in_room' | 'offline';
   currentRoomId?: string;
+  currentRoomName?: string;
   cognitoSub?: string;
   isGuest?: boolean;
   authProvider?: 'guest' | 'google' | 'cognito' | 'cognito-local-pool';
@@ -109,7 +110,25 @@ export interface Friendship {
   friendOnlineStatus?: 'online' | 'in_room' | 'offline';
   friendCurrentRoomId?: string;
   friendCurrentRoomName?: string;
+  isCloseFriend?: boolean;
   updatedAt: number;
+}
+
+export interface RoomInviteNotification {
+  inviteId: string;
+  roomId: string;
+  roomName: string;
+  roomCode: string;
+  isPrivate?: boolean;
+  passcode?: string;
+  genreTag?: string;
+  senderUserId: string;
+  senderUsername: string;
+  senderDisplayName: string;
+  senderAvatarUrl: string;
+  targetUserId: string;
+  createdAt: number;
+  read?: boolean;
 }
 
 export interface ListeningHistoryEntry {

@@ -1,22 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { X, Radio, Lock, Globe, Hash, ArrowRight } from 'lucide-react';
+import { X, Radio, Lock, Globe, Hash, ArrowRight, UserPlus, Star, Check, Users } from 'lucide-react';
 import { apiRequest } from '../aws-services/apiClient.ts';
-import { JamRoom } from '../types/jam.ts';
+import { JamRoom, Friendship, UserProfile, RoomInviteNotification } from '../types/jam.ts';
 import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (room: JamRoom) => void;
+  currentUser?: UserProfile | null;
+  friends?: Friendship[];
 }
 
-export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalProps) {
+export function CreateRoomModal({ isOpen, onClose, onCreated, currentUser, friends = [] }: CreateRoomModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [genreTag, setGenreTag] = useState('Electronic / Indie');
   const [isPrivate, setIsPrivate] = useState(false);
   const [passcode, setPasscode] = useState('');
   const [initialSong, setInitialSong] = useState('');
+  const [selectedInviteFriends, setSelectedInviteFriends] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -44,6 +47,28 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
       setPasscode('');
       if (res?.room?.roomId) {
         sessionStorage.setItem(`jamtogether_unlocked_${res.room.roomId}`, 'true');
+
+        // Dispatch real-time notifications to selected friends
+        if (currentUser && selectedInviteFriends.size > 0) {
+          selectedInviteFriends.forEach((friendId) => {
+            globalRoomDiscovery.sendRoomInvite({
+              inviteId: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              roomId: res.room.roomId,
+              roomName: res.room.name,
+              roomCode: res.room.roomCode,
+              isPrivate: res.room.isPrivate,
+              passcode: res.room.passcode,
+              genreTag: res.room.genreTag,
+              senderUserId: currentUser.userId,
+              senderUsername: currentUser.username,
+              senderDisplayName: currentUser.displayName,
+              senderAvatarUrl: currentUser.avatarUrl,
+              targetUserId: friendId,
+              createdAt: Date.now(),
+              read: false,
+            });
+          });
+        }
       }
       onCreated(res.room);
       onClose();
@@ -191,6 +216,88 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
               Leave blank to start with a clean room and queue any song live inside.
             </p>
           </div>
+
+          {/* Optional Friend Invitations */}
+          {friends.length > 0 && (
+            <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5 text-violet-500" />
+                  <span>Invite Friends (Optional)</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {selectedInviteFriends.size} selected
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Selected friends will receive an instant notification to join your room.
+              </p>
+              <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200/80 dark:border-slate-800">
+                {(() => {
+                  const sortedFriends = [...friends].sort((a, b) => {
+                    if (a.isCloseFriend && !b.isCloseFriend) return -1;
+                    if (!a.isCloseFriend && b.isCloseFriend) return 1;
+                    return a.friendDisplayName.localeCompare(b.friendDisplayName);
+                  });
+                  return sortedFriends.map((f) => {
+                    const isSelected = selectedInviteFriends.has(f.friendId);
+                    return (
+                      <button
+                        key={f.friendId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedInviteFriends((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(f.friendId)) next.delete(f.friendId);
+                            else next.add(f.friendId);
+                            return next;
+                          });
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors text-xs ${
+                          isSelected
+                            ? 'bg-violet-600/15 border border-violet-500/30 text-violet-900 dark:text-violet-200'
+                            : 'hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={
+                              f.friendAvatarUrl ||
+                              `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
+                                f.friendDisplayName || f.friendUsername
+                              )}`
+                            }
+                            alt={f.friendDisplayName}
+                            className="w-6 h-6 rounded-full object-cover"
+                          />
+                          <div className="min-w-0 truncate">
+                            <span className="font-bold text-xs truncate">
+                              {f.friendDisplayName}
+                            </span>
+                            {f.isCloseFriend && (
+                              <span className="ml-1 text-[10px]">⭐</span>
+                            )}
+                            <span className="text-[10px] text-slate-400 ml-1">
+                              @{f.friendUsername}
+                            </span>
+                          </div>
+                        </div>
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center border ${
+                            isSelected
+                              ? 'bg-violet-600 border-violet-600 text-white'
+                              : 'border-slate-300 dark:border-slate-600'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
             <button

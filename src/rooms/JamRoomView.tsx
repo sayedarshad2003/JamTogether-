@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Radio,
   Lock,
+  UserPlus,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -23,11 +24,13 @@ import {
   PlaybackState,
   UserProfile,
   YouTubeTrack,
+  Friendship,
 } from '../types/jam.ts';
 import { apiRequest } from '../aws-services/apiClient.ts';
 import { RoomRealtimeClient, RealtimeMessage } from '../realtime/roomSync.ts';
 import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 import { YouTubePlayer } from '../youtube/YouTubePlayer.tsx';
+import { InviteFriendsModal } from '../social/InviteFriendsModal.tsx';
 import { YouTubeSearchModal } from '../youtube/YouTubeSearchModal.tsx';
 import { useWebRTCVoice } from '../voice-chat/useWebRTCVoice.ts';
 import { VoiceChatPanel } from '../voice-chat/VoiceChatPanel.tsx';
@@ -42,10 +45,11 @@ import {
 interface JamRoomViewProps {
   roomId: string;
   currentUser: UserProfile | null;
+  friends?: Friendship[];
   onLeaveRoom: () => void;
 }
 
-export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewProps) {
+export function JamRoomView({ roomId, currentUser, friends = [], onLeaveRoom }: JamRoomViewProps) {
   const [room, setRoom] = useState<JamRoom | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -60,6 +64,8 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const [searchTab, setSearchTab] = useState<'search' | 'playlist' | 'my-playlists'>('search');
   const [toastError, setToastError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'queue' | 'chat' | 'voice' | 'people'>('queue');
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [localFriends, setLocalFriends] = useState<Friendship[]>(friends);
 
   // Private Room Mandatory Passcode Verification
   const isHost = Boolean(
@@ -94,6 +100,16 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     } else {
       setPrivatePasscodeError('Incorrect room code. Please ask the host for the code to enter.');
     }
+  };
+
+  const handleOpenInviteModal = async () => {
+    setInviteModalOpen(true);
+    try {
+      const res = await apiRequest<{ friends: Friendship[] }>('/api/friends');
+      if (res?.friends && Array.isArray(res.friends)) {
+        setLocalFriends(res.friends);
+      }
+    } catch {}
   };
 
   const realtimeClientRef = useRef<RoomRealtimeClient | null>(null);
@@ -1386,6 +1402,18 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             )}
           </button>
 
+          {/* Invite Friends Button */}
+          <button
+            type="button"
+            onClick={handleOpenInviteModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-xs font-bold text-white shadow-sm transition-all active:scale-95"
+            title="Invite Friends to Jam Room"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Invite Friends</span>
+            <span className="sm:hidden">Invite</span>
+          </button>
+
           {/* 1-Tap Share / Invite */}
           <button
             type="button"
@@ -1648,6 +1676,17 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
         onAddPlaylist={handleAddPlaylistToQueue}
         onQueueUserPlaylist={handleQueueUserPlaylist}
       />
+
+      {/* Real-time Room Invite Modal */}
+      {room && (
+        <InviteFriendsModal
+          isOpen={inviteModalOpen}
+          onClose={() => setInviteModalOpen(false)}
+          room={room}
+          currentUser={currentUser}
+          friends={friends && friends.length > 0 ? friends : localFriends}
+        />
+      )}
     </div>
   );
 }
