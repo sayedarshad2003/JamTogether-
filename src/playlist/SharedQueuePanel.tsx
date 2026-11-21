@@ -20,6 +20,8 @@ interface SharedQueuePanelProps {
   onRemoveItem: (itemId: string) => Promise<void>;
   onReorderItem: (itemId: string, direction: 'up' | 'down') => Promise<void>;
   onOpenSearch: (tab?: 'search' | 'playlist' | 'my-playlists') => void;
+  className?: string;
+  hideHeader?: boolean;
 }
 
 export function SharedQueuePanel({
@@ -31,10 +33,17 @@ export function SharedQueuePanel({
   onRemoveItem,
   onReorderItem,
   onOpenSearch,
+  className = '',
+  hideHeader = false,
 }: SharedQueuePanelProps) {
   return (
-    <div className="flex flex-col h-full rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+    <div
+      className={`flex flex-col h-full overflow-hidden ${
+        className || 'rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <ListMusic className="w-4 h-4 text-violet-600 dark:text-violet-400" />
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -70,6 +79,7 @@ export function SharedQueuePanel({
           </button>
         </div>
       </div>
+      )}
 
       <div className="p-3 overflow-y-auto space-y-2 flex-1">
         {queue.length === 0 ? (

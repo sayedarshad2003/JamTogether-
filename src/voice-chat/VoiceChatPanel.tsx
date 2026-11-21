@@ -27,6 +27,7 @@ interface VoiceChatPanelProps {
   onLeaveVC: () => void;
   onToggleMute: () => void;
   onTestSpeakingPulse: () => void;
+  className?: string;
 }
 
 export function VoiceChatPanel({
@@ -45,6 +46,7 @@ export function VoiceChatPanel({
   onLeaveVC,
   onToggleMute,
   onTestSpeakingPulse,
+  className = '',
 }: VoiceChatPanelProps) {
   const vcParticipants = members.filter(
     (m) =>
@@ -54,7 +56,12 @@ export function VoiceChatPanel({
   );
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4">
+    <div
+      className={
+        className ||
+        'rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

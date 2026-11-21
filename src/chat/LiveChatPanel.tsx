@@ -8,6 +8,8 @@ interface LiveChatPanelProps {
   currentUser: UserProfile | null;
   onSendMessage: (content: string) => Promise<void>;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
+  className?: string;
+  hideHeader?: boolean;
 }
 
 const QUICK_REACTIONS = ['🔥', '🎧', '💜', '👏', '🚀'];
@@ -26,6 +28,8 @@ export function LiveChatPanel({
   currentUser,
   onSendMessage,
   onToggleReaction,
+  className = '',
+  hideHeader = false,
 }: LiveChatPanelProps) {
   const [input, setInput] = useState('');
   const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
@@ -46,16 +50,22 @@ export function LiveChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Live Room Chat</h3>
+    <div
+      className={`flex flex-col h-full overflow-hidden ${
+        className || 'rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Live Room Chat</h3>
+          </div>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+            {onlineCount} online
+          </span>
         </div>
-        <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-          {onlineCount} online
-        </span>
-      </div>
+      )}
 
       {/* Messages Viewport */}
       <div className="p-4 overflow-y-auto space-y-3.5 flex-1">
