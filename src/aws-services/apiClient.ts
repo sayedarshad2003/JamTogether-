@@ -1358,22 +1358,10 @@ async function handleOfflineFallback<T>(
           (Date.now() - (window.performance?.timeOrigin || Date.now() - 60000)) / 1000
         ),
         memoryUsageMb: 42.5,
-        excelFilePath: 'data/jamtogether_database.xlsx',
-        excelStats: {
-          exists: true,
-          sizeBytes: 9850,
-          sizeFormatted: '9.8 KB',
-          sheetNames: [
-            'Users',
-            'JamRooms',
-            'RoomMembers',
-            'MusicQueue',
-            'PlaybackState',
-            'ChatMessages',
-            'ListeningHistory',
-            'Friendships',
-            'UserPlaylists',
-          ],
+        dynamoDb: {
+          isConfigured: true,
+          tableName: 'JamTogether_CoreTable',
+          region: 'us-east-1',
         },
       },
     } as any;
@@ -1512,14 +1500,6 @@ async function handleOfflineFallback<T>(
     }
 
     return { records: [] } as any;
-  }
-
-  // 18. Super Admin Sync Excel (/api/admin/sync-excel)
-  if (endpoint === '/api/admin/sync-excel') {
-    return {
-      success: true,
-      message: 'All local records successfully formatted into Excel database workbook.',
-    } as any;
   }
 
   // 19. Super Admin Wipe Data & Database Reset (/api/admin/wipe, /api/admin/wipe-data, /api/database/reset)

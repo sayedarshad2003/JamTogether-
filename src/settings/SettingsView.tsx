@@ -3,8 +3,6 @@ import {
   Settings,
   Shield,
   KeyRound,
-  FileSpreadsheet,
-  Download,
   RefreshCw,
   Trash2,
   AlertTriangle,
@@ -63,12 +61,10 @@ interface AdminOverviewData {
     platform: string;
     uptimeSec: number;
     memoryUsageMb: number;
-    excelFilePath: string;
-    excelStats: {
-      exists: boolean;
-      sizeBytes: number;
-      sizeFormatted: string;
-      sheetNames: string[];
+    dynamoDb?: {
+      isConfigured: boolean;
+      tableName: string;
+      region: string;
     };
   };
 }
@@ -325,68 +321,6 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
       setAdminMsg(`Error: ${(err as Error).message}`);
     } finally {
       setSavingGoogleConfig(false);
-    }
-  };
-
-  const handleSyncExcel = async () => {
-    setAdminMsg(null);
-    try {
-      const res = await apiRequest<{ success: boolean; message: string }>('/api/admin/sync-excel', {
-        method: 'POST',
-        headers: { 'x-admin-key': adminKey },
-      });
-      setAdminMsg(res.message);
-      fetchAdminOverview(adminKey);
-    } catch (err) {
-      setAdminMsg(`Error: ${(err as Error).message}`);
-    }
-  };
-
-  const handleDownloadExcel = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`/api/database/excel?key=${encodeURIComponent(adminKey)}`);
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('spreadsheet') || contentType.includes('octet-stream')) {
-          const blob = await res.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'jamtogether_database.xlsx';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          window.URL.revokeObjectURL(url);
-          return;
-        }
-      }
-    } catch {}
-
-    // Fallback: Client-side generation using xlsx library (works 100% on AWS Amplify static hosting)
-    try {
-      const XLSX = await import('xlsx');
-      const workbook = XLSX.utils.book_new();
-      const sheets: Record<string, string[]> = {
-        Users: ['User ID', 'Username', 'Display Name', 'Email', 'Is Guest', 'Auth Provider', 'Status', 'Avatar URL', 'Avatar (Base64)', 'Created At'],
-        JamRooms: ['Room ID', 'Room Code', 'Room Name', 'Description', 'Genre', 'Is Private', 'Host User ID', 'Host Username', 'Created At'],
-        MusicQueue: ['Queue Item ID', 'Room ID', 'Order Index', 'Video ID', 'Song Title', 'Artist / Channel', 'Duration', 'Added By (User)', 'Added At'],
-        RoomMembers: ['Room ID', 'User ID', 'Username', 'Display Name', 'Is Host', 'In Voice Chat', 'Is Muted', 'Joined At'],
-        PlaybackState: ['Room ID', 'Playback Status', 'Video ID', 'Song Title', 'Artist / Channel', 'Position (Sec)', 'Last Updated'],
-        ChatMessages: ['Message ID', 'Room ID', 'Sender User ID', 'Sender Display Name', 'Message Content', 'Sent At'],
-        ListeningHistory: ['History Entry ID', 'User ID', 'Room ID', 'Room Name', 'Video ID', 'Song Title', 'Played At'],
-        Friendships: ['User ID', 'Friend User ID', 'Friend Username', 'Friend Display Name', 'Status', 'Last Updated'],
-        UserPlaylists: ['Playlist ID', 'User ID', 'Playlist Name', 'Track Count', 'Source URL', 'Description', 'Created At'],
-      };
-
-      for (const [sheetName, cols] of Object.entries(sheets)) {
-        const ws = XLSX.utils.aoa_to_sheet([cols]);
-        XLSX.utils.book_append_sheet(workbook, ws, sheetName);
-      }
-
-      XLSX.writeFile(workbook, 'jamtogether_database.xlsx');
-    } catch (err) {
-      alert('Failed to export Excel database: ' + (err as Error).message);
     }
   };
 
@@ -848,7 +782,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                 </div>
 
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  This action is irreversible. All your sessions, friend links, rooms, playlists, and user records in the Excel database will be wiped permanently.
+                  This action is irreversible. All your sessions, friend links, rooms, playlists, and user records in DynamoDB will be wiped permanently.
                 </p>
 
                 <div className="flex justify-end pt-2">
@@ -879,7 +813,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                       Super Admin Authentication
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Enter the Super Admin Passkey to control Excel database exports, manage Google Auth keys, and access data reset tools.
+                      Enter the Super Admin Passkey to manage AWS DynamoDB data, configure Google Auth keys, and access system reset tools.
                     </p>
                   </div>
 
@@ -1003,17 +937,17 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                     </div>
                   )}
 
-                  {/* 2. EXCEL DATABASE CONTROL */}
+                  {/* 2. AWS DYNAMODB CLOUD DATABASE CONTROL */}
                   <div className="p-6 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <FileSpreadsheet className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        <Database className="w-5 h-5 text-violet-600 dark:text-violet-400" />
                         <div>
                           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                            Excel Database Management (.xlsx)
+                            AWS DynamoDB Cloud Database
                           </h3>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Persistent file-based database stored at <code>data/jamtogether_database.xlsx</code>
+                            Real-time serverless persistence in Amazon Web Services
                           </p>
                         </div>
                       </div>
@@ -1021,44 +955,42 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={handleSyncExcel}
+                          onClick={() => fetchAdminOverview(adminKey)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-[#181B28] hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition-colors"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Force Sync to Excel</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleDownloadExcel}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm transition-all"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download .xlsx</span>
+                          <span>Refresh Status</span>
                         </button>
                       </div>
                     </div>
 
-                    {adminOverview?.system?.excelStats && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
-                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                          <span className="text-[10px] text-slate-400 block">Status</span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">Active & Synced</span>
-                        </div>
-                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
-                          <span className="text-[10px] text-slate-400 block">File Size</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
-                            {adminOverview.system.excelStats.sizeFormatted || '15.1 KB'}
-                          </span>
-                        </div>
-                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28] sm:col-span-2">
-                          <span className="text-[10px] text-slate-400 block">Sheets (9 Total)</span>
-                          <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300 truncate block">
-                            {adminOverview.system.excelStats.sheetNames?.join(', ') || 'Users, JamRooms, Playlists'}
-                          </span>
-                        </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
+                        <span className="text-[10px] text-slate-400 block">Status</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          Connected & Active
+                        </span>
                       </div>
-                    )}
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
+                        <span className="text-[10px] text-slate-400 block">Table Name</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px] truncate block mt-0.5">
+                          {adminOverview?.system?.dynamoDb?.tableName || 'JamTogether_CoreTable'}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
+                        <span className="text-[10px] text-slate-400 block">Region</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px] block mt-0.5">
+                          {adminOverview?.system?.dynamoDb?.region || 'us-east-1'}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#181B28]">
+                        <span className="text-[10px] text-slate-400 block">Billing Mode</span>
+                        <span className="font-semibold text-violet-600 dark:text-violet-400 text-[11px] block mt-0.5">
+                          Pay-Per-Request (Free Tier)
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* 3. MANAGE GOOGLE AUTH CLIENT KEY */}
@@ -1184,7 +1116,7 @@ export function SettingsView({ onBackToDashboard, onRefreshDashboard }: Settings
                           Live Database Records Inspector
                         </h3>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Inspect records across DynamoDB and Excel sheets
+                          Inspect live records across DynamoDB single-table collections
                         </p>
                       </div>
 

@@ -8,11 +8,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { dynamoStore, DYNAMODB_ARCHITECTURE_DOCS } from './server/aws/dynamodb.ts';
 import {
-  exportToExcel,
-  getExcelFilePath,
-  getExcelStats,
-} from './server/storage/excelStore.ts';
-import {
   registerCognitoUser,
   loginCognitoUser,
   verifyCognitoToken,
@@ -436,8 +431,11 @@ async function startServer() {
         platform: process.platform,
         uptimeSec: Math.floor(process.uptime()),
         memoryUsageMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
-        excelFilePath: getExcelFilePath(),
-        excelStats: getExcelStats(),
+        dynamoDb: {
+          isConfigured: Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY),
+          tableName: `${process.env.DYNAMODB_TABLE_PREFIX || 'JamTogether_'}CoreTable`,
+          region: process.env.AWS_REGION || 'us-east-1',
+        },
       },
     });
   });
@@ -528,22 +526,6 @@ async function startServer() {
       message: detectedSecretSwitch
         ? 'Notice: Detected Google Client Secret (starts with GOCSPX-). Moved to Client Secret field. Please paste your Client ID (ends with .apps.googleusercontent.com) from Google Console.'
         : 'Google OAuth configuration successfully saved.',
-    });
-  });
-
-  // Super Admin: Force Excel Database Re-export
-  app.post('/api/admin/sync-excel', async (req: Request, res: Response) => {
-    if (!isSuperAdminAuthorized(req)) {
-      res.status(401).json({ error: 'Unauthorized: Super Admin access required.' });
-      return;
-    }
-    const allRecords = dynamoStore.getAllRecords();
-    const filePath = exportToExcel(allRecords);
-    res.json({
-      success: true,
-      filePath,
-      stats: getExcelStats(),
-      message: 'Excel database (.xlsx) successfully synchronized with all store tables.',
     });
   });
 
@@ -1941,35 +1923,22 @@ async function startServer() {
   });
 
   // ==========================================================================
-  // EXCEL DATABASE ROUTES (No SQL needed, persists directly to .xlsx)
-  // Protected: Only Super Admin can export/download the Excel database
+  // DATABASE STATS ROUTES
   // ==========================================================================
-  app.get('/api/database/excel', (req: Request, res: Response) => {
-    if (!isSuperAdminAuthorized(req)) {
-      res.status(401).json({ error: 'Unauthorized: Only Super Admin can export the Excel database.' });
-      return;
-    }
-    try {
-      const allRecords = dynamoStore.getAllRecords();
-      const filePath = exportToExcel(allRecords);
-      res.download(filePath, 'jamtogether_database.xlsx');
-    } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
-    }
-  });
-
   app.get('/api/database/stats', (_req: Request, res: Response) => {
     try {
-      const stats = getExcelStats();
       const allRecords = dynamoStore.getAllRecords();
       const countsByEntity: Record<string, number> = {};
       for (const r of allRecords) {
         countsByEntity[r.entityType] = (countsByEntity[r.entityType] || 0) + 1;
       }
       res.json({
-        ...stats,
         totalRecords: allRecords.length,
         countsByEntity,
+        storageEngine: Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+          ? 'AWS DynamoDB (Cloud)'
+          : 'DynamoDB Local Engine',
+        tableName: `${process.env.DYNAMODB_TABLE_PREFIX || 'JamTogether_'}CoreTable`,
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
@@ -2213,7 +2182,7 @@ async function startServer() {
     // Ensure all existing user avatars are perpetually persisted in Base64
     migrateExistingUsersAvatarsToBase64().then((count) => {
       if (count > 0) {
-        console.log(`[JamTogether] Migrated ${count} user avatars to Base64 in Excel database.`);
+        console.log(`[JamTogether] Migrated ${count} user avatars to Base64 in DynamoDB store.`);
       }
     }).catch((err) => {
       console.warn('[JamTogether] Avatar migration notice:', err.message);

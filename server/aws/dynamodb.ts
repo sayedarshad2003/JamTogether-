@@ -8,7 +8,6 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import fs from 'fs';
 import path from 'path';
-import { exportToExcel } from '../storage/excelStore.ts';
 import {
   UserProfile,
   JamRoom,
@@ -22,12 +21,10 @@ import {
 } from '../../src/types/jam.ts';
 
 /**
- * JamTogether Data Layer (File & Excel Database Engine)
+ * JamTogether Data Layer (AWS DynamoDB Engine)
  *
- * Persists application state to disk in real-time:
- * 1. Microsoft Excel Workbook (.xlsx) at `data/jamtogether_database.xlsx` with sheets for Users, JamRooms, MusicQueue, etc.
- * 2. High-speed local store at `.data/dynamodb-store.json`.
- * 3. Starts 100% from scratch with no pre-seeded dummy records.
+ * Persists application state directly to Amazon DynamoDB in real-time
+ * with high-speed local fallback cache at `.data/dynamodb-store.json`.
  */
 
 export interface DynamoRecord {
@@ -75,10 +72,6 @@ class DynamoDBStore {
 
   constructor() {
     this.loadFromDisk();
-    // Initialize empty Excel database if empty
-    if (this.items.size === 0) {
-      exportToExcel([]);
-    }
   }
 
   private compositeKey(pk: string, sk: string): string {
@@ -108,8 +101,6 @@ class DynamoDBStore {
       }
       const arr = Array.from(this.items.values());
       fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(arr, null, 2), 'utf-8');
-      // Sync immediately with Microsoft Excel database
-      exportToExcel(arr);
     } catch (err) {
       console.error('Failed to persist database store:', err);
     }
