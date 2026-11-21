@@ -434,7 +434,52 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
                 </p>
               </div>
 
-              {/* 1. ACTUAL GOOGLE AUTHENTICATION */}
+              {/* 1. GUEST LOGIN (TOP) */}
+              <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/70 dark:from-[#181B28] dark:to-[#141622] border border-slate-200/80 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Guest Access
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Join immediately without registration
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Instant
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={guestNickname}
+                      onChange={(e) => setGuestNickname(e.target.value)}
+                      placeholder="Optional nickname (e.g. SonicBeats)"
+                      className="flex-1 px-3 py-2 text-xs rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => handleGuestLogin()}
+                      className="px-4 py-2 text-xs font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-colors whitespace-nowrap shadow-sm shadow-emerald-600/20"
+                    >
+                      {submitting ? 'Joining...' : 'Join as Guest'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                    Creates an instant session allowing you to queue songs, join voice chat, and vote.
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. GOOGLE AUTHENTICATION (BELOW) */}
               <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/70 dark:from-[#181B28] dark:to-[#141622] border border-slate-200/80 dark:border-slate-800 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -502,51 +547,6 @@ export function AuthModal({ isOpen, onClose, initialTab = 'profile' }: AuthModal
                   </button>
                   <p className="text-[11px] text-center text-slate-500 dark:text-slate-400 mt-2">
                     Opens Google account picker to sign in with your Google profile
-                  </p>
-                </div>
-              </div>
-
-              {/* 2. GUEST LOGIN */}
-              <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/70 dark:from-[#181B28] dark:to-[#141622] border border-slate-200/80 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-                        Guest Access
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Join immediately without registration
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    Instant
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={guestNickname}
-                      onChange={(e) => setGuestNickname(e.target.value)}
-                      placeholder="Optional nickname (e.g. SonicBeats)"
-                      className="flex-1 px-3 py-2 text-xs rounded-xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => handleGuestLogin()}
-                      className="px-4 py-2 text-xs font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-colors whitespace-nowrap shadow-sm shadow-emerald-600/20"
-                    >
-                      {submitting ? 'Joining...' : 'Join as Guest'}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                    Creates an instant session allowing you to queue songs, join voice chat, and vote.
                   </p>
                 </div>
               </div>

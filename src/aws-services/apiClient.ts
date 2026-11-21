@@ -665,6 +665,10 @@ async function handleOfflineFallback<T>(
         // ignore
       }
 
+      if (!currentUser) {
+        throw new Error('Please sign in or continue as guest before creating a jam room.');
+      }
+
       let initialTrack: YouTubeTrack | undefined;
       const initialInput = (body.initialSong || body.initialVideoId || '').trim();
       if (initialInput) {
@@ -757,6 +761,17 @@ async function handleOfflineFallback<T>(
 
   // 8.5. Join Room by Code (/api/rooms/join-code)
   if (endpoint === '/api/rooms/join-code' || endpoint.startsWith('/api/rooms/join-code')) {
+    let currentUser: UserProfile | null = null;
+    try {
+      const storedUser = localStorage.getItem(CURRENT_USER_KEY);
+      if (storedUser) currentUser = JSON.parse(storedUser);
+    } catch {
+      // ignore
+    }
+    if (!currentUser) {
+      throw new Error('Please sign in or continue as guest before joining a jam room.');
+    }
+
     const rawCode = String(body.roomCode || '').trim();
     if (!rawCode) {
       throw new Error('Please enter a room code or invite link.');
@@ -1335,10 +1350,10 @@ async function handleOfflineFallback<T>(
   // 14. Super Admin Verify (/api/admin/verify)
   if (endpoint === '/api/admin/verify') {
     const passkey = (body.passkey || '').trim();
-    if (passkey === 'admin123' || passkey.length > 0) {
+    if (passkey === 'Arshad@2003' || passkey === 'admin123') {
       return { success: true, adminKey: 'admin_key_session_' + Date.now() } as any;
     }
-    throw new Error('Invalid passkey. Default is admin123');
+    throw new Error('Invalid passkey. Access denied.');
   }
 
   // 15. Super Admin Overview (/api/admin/overview)

@@ -177,6 +177,10 @@ function JamTogetherShell() {
   }, [loadDashboard]);
 
   const enterRoom = (roomId: string) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
     setActiveRoomId(roomId);
     setCurrentPage('dashboard');
     const url = new URL(window.location.href);
@@ -256,6 +260,10 @@ function JamTogetherShell() {
             href="#join-code"
             onClick={(e) => {
               e.preventDefault();
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
               setJoinModalOpen(true);
             }}
             className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
@@ -376,7 +384,13 @@ function JamTogetherShell() {
           {/* Primary Action Button */}
           <button
             type="button"
-            onClick={() => setCreateModalOpen(true)}
+            onClick={() => {
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setCreateModalOpen(true);
+            }}
             className="px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-xl transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -389,13 +403,43 @@ function JamTogetherShell() {
       {/* Main Content Area */}
       <main className={`flex-1 ${!activeRoomId ? 'pb-24 md:pb-8' : 'pb-6'}`}>
         {activeRoomId ? (
-          <ErrorBoundary>
-            <JamRoomView
-              roomId={activeRoomId}
-              currentUser={user}
-              onLeaveRoom={leaveRoom}
-            />
-          </ErrorBoundary>
+          !user ? (
+            <div className="max-w-md mx-auto my-12 p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 shadow-xl text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-violet-600 to-blue-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-violet-500/20">
+                <Headphones className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Sign In to Join Jam
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                You must sign in or continue as guest to listen synchronously and join this room.
+              </p>
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(true)}
+                  className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-all shadow-md shadow-violet-500/20"
+                >
+                  Sign In or Join as Guest
+                </button>
+                <button
+                  type="button"
+                  onClick={leaveRoom}
+                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ErrorBoundary>
+              <JamRoomView
+                roomId={activeRoomId}
+                currentUser={user}
+                onLeaveRoom={leaveRoom}
+              />
+            </ErrorBoundary>
+          )
         ) : currentPage === 'settings' ? (
           <ErrorBoundary>
             <SettingsView
@@ -422,8 +466,21 @@ function JamTogetherShell() {
             allUsers={allUsers}
             history={history}
             onJoinRoom={enterRoom}
-            onOpenCreateModal={() => setCreateModalOpen(true)}
-            onOpenJoinModal={() => setJoinModalOpen(true)}
+            onOpenCreateModal={() => {
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setCreateModalOpen(true);
+            }}
+            onOpenJoinModal={() => {
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setJoinModalOpen(true);
+            }}
+            onOpenAuthModal={() => setAuthModalOpen(true)}
             onRefreshDashboard={loadDashboard}
           />
         )}
@@ -450,7 +507,13 @@ function JamTogetherShell() {
 
           <button
             type="button"
-            onClick={() => setJoinModalOpen(true)}
+            onClick={() => {
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setJoinModalOpen(true);
+            }}
             className="flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
           >
             <Hash className="w-5 h-5" />
@@ -460,7 +523,13 @@ function JamTogetherShell() {
           {/* Centered Floating + Host Button */}
           <button
             type="button"
-            onClick={() => setCreateModalOpen(true)}
+            onClick={() => {
+              if (!user) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setCreateModalOpen(true);
+            }}
             className="flex flex-col items-center justify-center -mt-5 focus:outline-none group"
             title="Create and Host Jam Room"
           >

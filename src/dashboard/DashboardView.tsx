@@ -42,6 +42,7 @@ interface DashboardViewProps {
   onJoinRoom: (roomId: string) => void;
   onOpenCreateModal: () => void;
   onOpenJoinModal: () => void;
+  onOpenAuthModal?: () => void;
   onRefreshDashboard: () => Promise<void>;
 }
 
@@ -57,6 +58,7 @@ export function DashboardView({
   onJoinRoom,
   onOpenCreateModal,
   onOpenJoinModal,
+  onOpenAuthModal,
   onRefreshDashboard,
 }: DashboardViewProps) {
   const [quickCode, setQuickCode] = useState('');
@@ -73,6 +75,10 @@ export function DashboardView({
   const [privatePasscodeError, setPrivatePasscodeError] = useState<string | null>(null);
 
   const handleRoomClick = (room: JamRoom) => {
+    if (!user) {
+      onOpenAuthModal?.();
+      return;
+    }
     const isHost = Boolean(
       user &&
         (user.userId === room.hostUserId ||
@@ -114,6 +120,10 @@ export function DashboardView({
 
   const handleQuickJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      onOpenAuthModal?.();
+      return;
+    }
     const clean = quickCode.trim().replace(/^JAM-?/i, '').toUpperCase();
     if (!clean) return;
     setQuickCodeError(null);
@@ -191,7 +201,13 @@ export function DashboardView({
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
               <button
                 type="button"
-                onClick={onOpenCreateModal}
+                onClick={() => {
+                  if (!user) {
+                    onOpenAuthModal?.();
+                  } else {
+                    onOpenCreateModal();
+                  }
+                }}
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 shadow-lg shadow-violet-600/30 transition-transform active:scale-95"
               >
                 <Plus className="w-4 h-4" />
@@ -200,7 +216,13 @@ export function DashboardView({
 
               <button
                 type="button"
-                onClick={onOpenJoinModal}
+                onClick={() => {
+                  if (!user) {
+                    onOpenAuthModal?.();
+                  } else {
+                    onOpenJoinModal();
+                  }
+                }}
                 className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/15 backdrop-blur-md transition-colors"
               >
                 <Hash className="w-4 h-4 text-violet-400" />
@@ -316,7 +338,13 @@ export function DashboardView({
 
         <button
           type="button"
-          onClick={onOpenCreateModal}
+          onClick={() => {
+            if (!user) {
+              onOpenAuthModal?.();
+            } else {
+              onOpenCreateModal();
+            }
+          }}
           className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 transition-colors shrink-0"
         >
           <Plus className="w-4 h-4" />
@@ -350,7 +378,13 @@ export function DashboardView({
               </p>
               <button
                 type="button"
-                onClick={onOpenCreateModal}
+                onClick={() => {
+                  if (!user) {
+                    onOpenAuthModal?.();
+                  } else {
+                    onOpenCreateModal();
+                  }
+                }}
                 className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 transition-all shadow-md"
               >
                 <Plus className="w-4 h-4" />
@@ -503,7 +537,7 @@ export function DashboardView({
             {myCreatedRooms.map((room) => (
               <div
                 key={room.roomId}
-                onClick={() => onJoinRoom(room.roomId)}
+                onClick={() => handleRoomClick(room)}
                 className="cursor-pointer group flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#11131C] border-2 border-violet-500/30 hover:border-violet-500 shadow-sm transition-all space-y-4"
               >
                 <div className="space-y-3">
@@ -552,7 +586,10 @@ export function DashboardView({
 
                   <button
                     type="button"
-                    onClick={() => onJoinRoom(room.roomId)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRoomClick(room);
+                    }}
                     className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 shadow-md"
                   >
                     Resume Session

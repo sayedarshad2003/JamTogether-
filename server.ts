@@ -361,7 +361,7 @@ async function startServer() {
 
   // Helper for Super Admin passkey verification
   function isSuperAdminAuthorized(req: Request): boolean {
-    const adminSecret = (process.env.ADMIN_SECRET || 'admin123').trim();
+    const adminSecret = (process.env.ADMIN_SECRET || 'Arshad@2003').trim();
     const headerKey = ((req.headers['x-admin-key'] as string) || '').trim();
     const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     const queryKey = (
@@ -383,7 +383,7 @@ async function startServer() {
   // Verify Super Admin Passkey
   app.post('/api/admin/verify', (req: Request, res: Response) => {
     const { passkey } = req.body || {};
-    const adminSecret = (process.env.ADMIN_SECRET || 'admin123').trim();
+    const adminSecret = (process.env.ADMIN_SECRET || 'Arshad@2003').trim();
     if (passkey && String(passkey).trim() === adminSecret) {
       res.json({ success: true, adminKey: passkey });
     } else {

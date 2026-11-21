@@ -318,12 +318,6 @@ export function SuperAdminView({ onBackToDashboard, onRefreshDashboard }: SuperA
               <span>Unlock Admin Portal</span>
             </button>
           </form>
-
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-              Default passkey: <span className="font-semibold text-violet-500">jamtogether_admin_2025</span>
-            </p>
-          </div>
         </div>
       </div>
     );
