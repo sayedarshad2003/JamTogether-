@@ -705,7 +705,10 @@ async function startServer() {
 
     const now = Date.now();
     const roomId = `room_${crypto.randomBytes(5).toString('hex')}`;
-    const roomCode = `JAM-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+    const passcode = req.body.passcode ? String(req.body.passcode).trim().toUpperCase() : undefined;
+    const roomCode = passcode
+      ? (passcode.startsWith('JAM-') ? passcode : `JAM-${passcode}`)
+      : `JAM-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
     const initialTrack = initialVideoId
       ? CURATED_YOUTUBE_TRACKS.find((t) => t.videoId === initialVideoId) || null
@@ -730,6 +733,7 @@ async function startServer() {
       description: String(description || 'Synchronized listening session & live voice hangout.').trim(),
       genreTag: String(genreTag || 'Open Format').trim(),
       isPrivate: Boolean(isPrivate),
+      passcode,
       hostUserId: user.userId,
       hostUsername: user.displayName,
       hostAvatarUrl: user.avatarUrl,

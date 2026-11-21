@@ -17,6 +17,8 @@ import {
   FolderHeart,
   Share2,
   Flame,
+  Lock,
+  X,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -65,6 +67,51 @@ export function DashboardView({
   const [addingFriend, setAddingFriend] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
+  // Private Room Passcode Verification State
+  const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<JamRoom | null>(null);
+  const [privatePasscodeInput, setPrivatePasscodeInput] = useState('');
+  const [privatePasscodeError, setPrivatePasscodeError] = useState<string | null>(null);
+
+  const handleRoomClick = (room: JamRoom) => {
+    const isHost = Boolean(
+      user &&
+        (user.userId === room.hostUserId ||
+          user.username?.toLowerCase() === room.hostUsername?.toLowerCase() ||
+          user.email === 'arshadsayed232@gmail.com')
+    );
+    const isAlreadyUnlocked = sessionStorage.getItem(`jamtogether_unlocked_${room.roomId}`) === 'true';
+
+    if (room.isPrivate && !isHost && !isAlreadyUnlocked) {
+      setSelectedPrivateRoom(room);
+      setPrivatePasscodeInput('');
+      setPrivatePasscodeError(null);
+      return;
+    }
+
+    onJoinRoom(room.roomId);
+  };
+
+  const handleUnlockAndJoinPrivate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPrivateRoom) return;
+    const clean = privatePasscodeInput.trim().toUpperCase();
+    const isMatch = (
+      clean === selectedPrivateRoom.roomCode.toUpperCase() ||
+      clean === selectedPrivateRoom.roomCode.replace(/^JAM-?/i, '').toUpperCase() ||
+      (selectedPrivateRoom.passcode && clean === selectedPrivateRoom.passcode.toUpperCase()) ||
+      (selectedPrivateRoom.passcode && clean === selectedPrivateRoom.passcode.replace(/^JAM-?/i, '').toUpperCase())
+    );
+
+    if (isMatch) {
+      sessionStorage.setItem(`jamtogether_unlocked_${selectedPrivateRoom.roomId}`, 'true');
+      const targetRoomId = selectedPrivateRoom.roomId;
+      setSelectedPrivateRoom(null);
+      onJoinRoom(targetRoomId);
+    } else {
+      setPrivatePasscodeError('Incorrect room code. Please ask the host for the code to join.');
+    }
+  };
+
   const handleQuickJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = quickCode.trim().replace(/^JAM-?/i, '').toUpperCase();
@@ -76,6 +123,7 @@ export function DashboardView({
         body: JSON.stringify({ roomCode: clean }),
       });
       if (res?.room?.roomId) {
+        sessionStorage.setItem(`jamtogether_unlocked_${res.room.roomId}`, 'true');
         onJoinRoom(res.room.roomId);
       }
     } catch (err) {
@@ -321,7 +369,7 @@ export function DashboardView({
                 return (
                   <div
                     key={room.roomId}
-                    onClick={() => onJoinRoom(room.roomId)}
+                    onClick={() => handleRoomClick(room)}
                     className="cursor-pointer group flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800/80 hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/5 transition-all space-y-4"
                   >
                     <div className="space-y-3">
@@ -331,18 +379,37 @@ export function DashboardView({
                           <h3 className="text-base font-bold text-slate-900 dark:text-white truncate group-hover:text-violet-500 transition-colors">
                             {room.name}
                           </h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            {room.genreTag || 'Music'} · Code:{' '}
-                            <span className="font-mono font-bold text-violet-600 dark:text-violet-400">
-                              {room.roomCode}
-                            </span>
-                          </p>
+                          {room.isPrivate && !isMyRoom ? (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold mt-0.5 flex items-center gap-1">
+                              <Lock className="w-3 h-3 shrink-0" />
+                              <span>Private Jam · Code Required</span>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              {room.genreTag || 'Music'} · Code:{' '}
+                              <span className="font-mono font-bold text-violet-600 dark:text-violet-400">
+                                {room.roomCode}
+                              </span>
+                              {room.isPrivate && isMyRoom && (
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                  Private
+                                </span>
+                              )}
+                            </p>
+                          )}
                         </div>
 
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0 border border-emerald-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <span>{room.activeMemberCount || 1} online</span>
-                        </span>
+                        {room.isPrivate ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 border border-amber-500/20">
+                            <Lock className="w-3 h-3" />
+                            <span>Private</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>{room.activeMemberCount || 1} online</span>
+                          </span>
+                        )}
                       </div>
 
                       {/* Currently Playing Track Card */}
@@ -401,10 +468,17 @@ export function DashboardView({
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-violet-600 group-hover:bg-violet-500 transition-colors">
-                          <Headphones className="w-3.5 h-3.5" />
-                          <span>Tune In</span>
-                        </span>
+                        {room.isPrivate && !isMyRoom ? (
+                          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-amber-600 group-hover:bg-amber-500 transition-colors shadow-sm">
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Enter Code</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-violet-600 group-hover:bg-violet-500 transition-colors">
+                            <Headphones className="w-3.5 h-3.5" />
+                            <span>Tune In</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -606,6 +680,89 @@ export function DashboardView({
             </div>
           )}
         </section>
+      )}
+
+      {/* Private Room Passcode Verification Modal */}
+      {selectedPrivateRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#11131C] border border-amber-500/30 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Private Jam Session
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Host passcode required to enter
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPrivateRoom(null)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUnlockAndJoinPrivate} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                  {selectedPrivateRoom.name}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Hosted by <strong className="text-slate-800 dark:text-slate-200">{selectedPrivateRoom.hostUsername}</strong>
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                🔒 This listening session is locked and private. You must enter the Room Code or Passcode provided by the host to join and listen.
+              </div>
+
+              {privatePasscodeError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 font-medium">
+                  {privatePasscodeError}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Enter Room Code / Passcode
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={privatePasscodeInput}
+                  onChange={(e) => setPrivatePasscodeInput(e.target.value)}
+                  placeholder="e.g. JAM-808X or Passcode"
+                  className="w-full px-3.5 py-2.5 text-sm font-mono font-bold uppercase rounded-xl bg-slate-50 dark:bg-[#181B28] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPrivateRoom(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Unlock & Join Room</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

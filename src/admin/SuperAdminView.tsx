@@ -735,6 +735,11 @@ export function SuperAdminView({ onBackToDashboard, onRefreshDashboard }: SuperA
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-violet-500/10 text-violet-600 dark:text-violet-400">
                           {room.roomCode}
                         </span>
+                        {room.isPrivate && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            Private
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         Host: {room.hostUsername} · {room.members?.length || 1} members · ID: {room.roomId}

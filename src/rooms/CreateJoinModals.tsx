@@ -15,6 +15,7 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
   const [description, setDescription] = useState('');
   const [genreTag, setGenreTag] = useState('Electronic / Indie');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [passcode, setPasscode] = useState('');
   const [initialSong, setInitialSong] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,12 +34,17 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
           description,
           genreTag,
           isPrivate,
+          passcode: isPrivate ? passcode.trim().toUpperCase() || undefined : undefined,
           initialSong: initialSong.trim(),
         }),
       });
       setName('');
       setDescription('');
       setInitialSong('');
+      setPasscode('');
+      if (res?.room?.roomId) {
+        sessionStorage.setItem(`jamtogether_unlocked_${res.room.roomId}`, 'true');
+      }
       onCreated(res.room);
       onClose();
     } catch (err) {
@@ -146,6 +152,30 @@ export function CreateRoomModal({ isOpen, onClose, onCreated }: CreateRoomModalP
             </div>
           </div>
 
+          {isPrivate && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span>Mandatory Room Code Required</span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                This room will be locked. Any user who wants to join must enter the Room Code or Passcode you choose.
+              </p>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Custom Room Code / Passcode (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value.toUpperCase())}
+                  placeholder="e.g. VIP-2025 or SECRET (blank for auto code)"
+                  className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded-lg bg-white dark:bg-[#181B28] border border-amber-500/40 text-slate-900 dark:text-white uppercase focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Opening Track (Optional)
@@ -223,6 +253,9 @@ export function JoinRoomModal({ isOpen, onClose, onJoined }: JoinRoomModalProps)
         body: JSON.stringify({ roomCode: cleanCode }),
       });
       setRoomCode('');
+      if (res?.room?.roomId) {
+        sessionStorage.setItem(`jamtogether_unlocked_${res.room.roomId}`, 'true');
+      }
       onJoined(res.room);
       onClose();
     } catch (err) {

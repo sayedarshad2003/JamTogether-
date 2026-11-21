@@ -87,6 +87,7 @@ export interface JamRoom {
   description: string;
   genreTag: string;
   isPrivate: boolean;
+  passcode?: string;
   hostUserId: string;
   hostUsername: string;
   hostAvatarUrl: string;

@@ -680,7 +680,7 @@ async function handleOfflineFallback<T>(
       }
 
       // Generate clean, deterministic room code and room ID
-      const rawCode = (body.roomCode || '').trim().toUpperCase();
+      const rawCode = (body.passcode || body.roomCode || '').trim().toUpperCase();
       const codeSuffix =
         rawCode && /^[A-Z0-9-]{3,12}$/.test(rawCode)
           ? rawCode.replace(/^JAM-?/, '')
@@ -695,6 +695,7 @@ async function handleOfflineFallback<T>(
         description: body.description || '',
         genreTag: body.genreTag || 'Electronic / Indie',
         isPrivate: Boolean(body.isPrivate),
+        passcode: body.passcode ? String(body.passcode).trim().toUpperCase() : undefined,
         hostUserId: currentUser?.userId || 'guest_host',
         hostUsername: currentUser?.username || 'host',
         hostAvatarUrl: currentUser?.avatarUrl || '',
@@ -772,13 +773,24 @@ async function handleOfflineFallback<T>(
     let matched = localRooms.find(
       (r) =>
         r.roomCode.replace(/^JAM-?/i, '').toUpperCase() === cleanCode ||
+        r.roomCode.toUpperCase() === rawCode.toUpperCase() ||
+        (r.passcode && r.passcode.toUpperCase() === rawCode.toUpperCase()) ||
+        (r.passcode && r.passcode.replace(/^JAM-?/i, '').toUpperCase() === cleanCode) ||
         r.roomId.toLowerCase() === `jam_${cleanCode.toLowerCase()}` ||
         r.roomId.toLowerCase() === rawCode.toLowerCase()
     );
 
     // 2. Check globally discovered rooms from other devices
     if (!matched) {
-      matched = globalRoomDiscovery.getRoomByCode(cleanCode) || undefined;
+      matched =
+        globalRoomDiscovery.getRoomByCode(cleanCode) ||
+        globalRoomDiscovery.getDiscoveredRooms().find(
+          (r) =>
+            r.roomCode.toUpperCase() === rawCode.toUpperCase() ||
+            (r.passcode && r.passcode.toUpperCase() === rawCode.toUpperCase()) ||
+            (r.passcode && r.passcode.replace(/^JAM-?/i, '').toUpperCase() === cleanCode)
+        ) ||
+        undefined;
     }
 
     if (!matched) {

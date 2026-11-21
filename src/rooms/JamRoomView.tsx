@@ -13,6 +13,7 @@ import {
   ListMusic,
   MessageSquare,
   Radio,
+  Lock,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -59,6 +60,41 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   const [searchTab, setSearchTab] = useState<'search' | 'playlist' | 'my-playlists'>('search');
   const [toastError, setToastError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'queue' | 'chat' | 'voice' | 'people'>('queue');
+
+  // Private Room Mandatory Passcode Verification
+  const isHost = Boolean(
+    currentUser &&
+      room &&
+      (currentUser.userId === room.hostUserId ||
+        currentUser.username?.toLowerCase() === room.hostUsername?.toLowerCase() ||
+        currentUser.email === 'arshadsayed232@gmail.com')
+  );
+
+  const [isPrivateUnlocked, setIsPrivateUnlocked] = useState<boolean>(() => {
+    return sessionStorage.getItem(`jamtogether_unlocked_${roomId}`) === 'true';
+  });
+  const [privatePasscodeInput, setPrivatePasscodeInput] = useState('');
+  const [privatePasscodeError, setPrivatePasscodeError] = useState<string | null>(null);
+
+  const handleUnlockPrivateRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!room) return;
+    const clean = privatePasscodeInput.trim().toUpperCase();
+    const isMatch = (
+      clean === room.roomCode.toUpperCase() ||
+      clean === room.roomCode.replace(/^JAM-?/i, '').toUpperCase() ||
+      (room.passcode && clean === room.passcode.toUpperCase()) ||
+      (room.passcode && clean === room.passcode.replace(/^JAM-?/i, '').toUpperCase())
+    );
+
+    if (isMatch) {
+      sessionStorage.setItem(`jamtogether_unlocked_${room.roomId}`, 'true');
+      setIsPrivateUnlocked(true);
+      setPrivatePasscodeError(null);
+    } else {
+      setPrivatePasscodeError('Incorrect room code. Please ask the host for the code to enter.');
+    }
+  };
 
   const realtimeClientRef = useRef<RoomRealtimeClient | null>(null);
   const currentPlaybackRef = useRef<PlaybackState | null>(null);
@@ -245,6 +281,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
   // Connect to Real-Time Room Sync Layer (Direct WS locally, MQTT WebSocket Cloud Relay on Amplify)
   useEffect(() => {
     if (!currentUser) return;
+    if (room?.isPrivate && !isHost && !isPrivateUnlocked) return;
     const activeUser = currentUser;
     let isUnmounted = false;
 
@@ -682,7 +719,7 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       client.close();
       realtimeClientRef.current = null;
     };
-  }, [roomId, currentUser?.userId, onLeaveRoom]);
+  }, [roomId, currentUser?.userId, onLeaveRoom, room?.isPrivate, isHost, isPrivateUnlocked]);
 
   // Keep local and remote participant state in sync when user updates avatar or display name
   useEffect(() => {
@@ -712,8 +749,6 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
       return updated;
     });
   }, [currentUser?.avatarUrl, currentUser?.displayName]);
-
-  const isHost = Boolean(room && currentUser && room.hostUserId === currentUser.userId);
 
   const handlePlaybackAction = useCallback(
     async (
@@ -1120,6 +1155,68 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
     );
   }
 
+  // Mandatory Passcode Lock Screen for Private Rooms
+  if (room.isPrivate && !isHost && !isPrivateUnlocked) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center animate-in fade-in zoom-in-95 duration-200">
+        <div className="p-8 rounded-3xl bg-white dark:bg-[#11131C] border border-amber-500/30 shadow-2xl space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-orange-500/25">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              <Lock className="w-3.5 h-3.5" />
+              <span>Private Jam Session</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              {room.name}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Hosted by <strong className="text-slate-800 dark:text-slate-200">{room.hostUsername}</strong>
+            </p>
+          </div>
+
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-[#181B28] p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+            This listening room is private and locked. You must enter the Room Code or Passcode provided by the host to join and listen.
+          </p>
+
+          {privatePasscodeError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 font-medium">
+              {privatePasscodeError}
+            </div>
+          )}
+
+          <form onSubmit={handleUnlockPrivateRoom} className="space-y-3">
+            <input
+              type="text"
+              required
+              autoFocus
+              value={privatePasscodeInput}
+              onChange={(e) => setPrivatePasscodeInput(e.target.value)}
+              placeholder="Enter Room Code (e.g. JAM-808X)"
+              className="w-full px-4 py-3 text-sm text-center font-mono font-bold tracking-wider rounded-xl bg-slate-50 dark:bg-[#181B28] border border-amber-500/40 text-slate-900 dark:text-white uppercase focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <button
+              type="submit"
+              className="w-full py-3 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              <span>Unlock & Enter Room</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLeaveRoom}
+              className="w-full py-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            >
+              Return to Dashboard
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   // Helper to render participants panel
   const renderParticipants = () => (
     <div className="rounded-2xl bg-white dark:bg-[#11131C] border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-3.5">
@@ -1262,6 +1359,13 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
 
         {/* Clean Actions: Share & Room Code */}
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          {room.isPrivate && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-500/20">
+              <Lock className="w-3.5 h-3.5" />
+              <span>Private</span>
+            </span>
+          )}
+
           {/* Room Code Badge */}
           <button
             type="button"
