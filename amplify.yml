@@ -3,7 +3,7 @@ frontend:
   phases:
     preBuild:
       commands:
-        - echo "VITE_GOOGLE_CLIENT_ID=53242643213-b9flt3vpm3gl40rt27n4netvjb0pko1k.apps.googleusercontent.com" > .env
+        - env | grep -E '^VITE_' > .env || true
         - npm ci --legacy-peer-deps || npm install --legacy-peer-deps
     build:
       commands:
