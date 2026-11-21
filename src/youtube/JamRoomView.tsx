@@ -1227,10 +1227,36 @@ export function JamRoomView({ roomId, currentUser, onLeaveRoom }: JamRoomViewPro
             isHost={isHost}
             onPlaybackAction={handlePlaybackAction}
             onRequestSyncCheck={() => sendWsMessage('playback:request_sync')}
-            onOpenSearch={() => {
-              setSearchTab('search');
+            onOpenSearch={(tab) => {
+              if (tab) setSearchTab(tab);
               setSearchOpen(true);
             }}
+            queue={queue}
+            messages={messages}
+            members={members}
+            currentUser={currentUser}
+            inVoiceChat={inVoiceChat}
+            isMuted={isMuted}
+            isSpeaking={isSpeaking}
+            connectionStatus={connectionStatus}
+            permissionNotice={permissionNotice}
+            audioDevices={audioDevices}
+            selectedDeviceId={selectedDeviceId}
+            onSelectDevice={setSelectedDeviceId}
+            peerStatuses={peerStatuses}
+            onJoinVC={joinVoiceChat}
+            onLeaveVC={leaveVoiceChat}
+            onToggleMute={toggleMuteMic}
+            onTestSpeakingPulse={triggerTestSpeakingPulse}
+            onSendMessage={handleSendMessage}
+            onToggleReaction={handleToggleReaction}
+            onSelectTrackFromQueue={handleSelectTrackFromQueue}
+            onRemoveQueueItem={handleRemoveQueueItem}
+            onReorderQueueItem={handleReorderQueueItem}
+            onTransferHost={handleTransferHost}
+            onKickMember={handleKickMember}
+            roomHostUserId={room.hostUserId}
+            roomHostUsername={room.hostUsername}
           />
 
           {/* MOBILE ONLY: Sleek Segmented Navigation Tabs */}
