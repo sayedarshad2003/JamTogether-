@@ -15,6 +15,8 @@ import {
   Radio,
   Lock,
   UserPlus,
+  Gamepad2,
+  Tv,
 } from 'lucide-react';
 import {
   JamRoom,
@@ -30,6 +32,8 @@ import { apiRequest } from '../aws-services/apiClient.ts';
 import { RoomRealtimeClient, RealtimeMessage } from '../realtime/roomSync.ts';
 import { globalRoomDiscovery } from '../realtime/globalDiscovery.ts';
 import { YouTubePlayer } from '../youtube/YouTubePlayer.tsx';
+import { GameHub } from '../games/GameHub';
+import { LoungeMusicBar } from '../youtube/LoungeMusicBar';
 import { InviteFriendsModal } from '../social/InviteFriendsModal.tsx';
 import { YouTubeSearchModal } from '../youtube/YouTubeSearchModal.tsx';
 import { useWebRTCVoice } from '../voice-chat/useWebRTCVoice.ts';
@@ -133,6 +137,20 @@ export function JamRoomView({ roomId, currentUser, friends = [], onLeaveRoom }: 
       }
     },
     [roomId]
+  );
+
+  const [roomViewMode, setRoomViewMode] = useState<'arcade' | 'theater'>('arcade');
+  const [lastIncomingGameAction, setLastIncomingGameAction] = useState<{
+    actionType: string;
+    payload: any;
+    timestamp: number;
+  } | null>(null);
+
+  const handleSendGameAction = useCallback(
+    (actionType: string, payload: any) => {
+      sendWsMessage('game:action', { actionType, payload });
+    },
+    [sendWsMessage]
   );
 
   const {
@@ -567,6 +585,16 @@ export function JamRoomView({ roomId, currentUser, friends = [], onLeaveRoom }: 
           }
           case 'room:closed': {
             onLeaveRoom();
+            break;
+          }
+          case 'game:action': {
+            if (msg.payload) {
+              setLastIncomingGameAction({
+                actionType: msg.payload.actionType,
+                payload: msg.payload.payload,
+                timestamp: Date.now(),
+              });
+            }
             break;
           }
           case 'playback:updated':
@@ -1382,6 +1410,36 @@ export function JamRoomView({ roomId, currentUser, friends = [], onLeaveRoom }: 
             </span>
           )}
 
+          {/* View Mode Switcher: Arcade vs Theater */}
+          <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-[#181B28] border border-slate-200/80 dark:border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setRoomViewMode('arcade')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                roomViewMode === 'arcade'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Arcade Lounge (Games & Synced Music)"
+            >
+              <Gamepad2 className="w-3.5 h-3.5" />
+              <span>Arcade</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoomViewMode('theater')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                roomViewMode === 'theater'
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Video Theater Mode"
+            >
+              <Tv className="w-3.5 h-3.5" />
+              <span>Theater</span>
+            </button>
+          </div>
+
           {/* Room Code Badge */}
           <button
             type="button"
@@ -1451,42 +1509,79 @@ export function JamRoomView({ roomId, currentUser, friends = [], onLeaveRoom }: 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* Left Column (Desktop 7 cols) / Primary Column (Mobile) */}
         <div className="lg:col-span-7 space-y-4">
-          <YouTubePlayer
-            playback={playback}
-            isHost={isHost}
-            onPlaybackAction={handlePlaybackAction}
-            onRequestSyncCheck={() => sendWsMessage('playback:request_sync')}
-            onOpenSearch={(tab) => {
-              if (tab) setSearchTab(tab);
-              setSearchOpen(true);
-            }}
-            queue={queue}
-            messages={messages}
-            members={members}
-            currentUser={currentUser}
-            inVoiceChat={inVoiceChat}
-            isMuted={isMuted}
-            isSpeaking={isSpeaking}
-            connectionStatus={connectionStatus}
-            permissionNotice={permissionNotice}
-            audioDevices={audioDevices}
-            selectedDeviceId={selectedDeviceId}
-            onSelectDevice={setSelectedDeviceId}
-            peerStatuses={peerStatuses}
-            onJoinVC={joinVoiceChat}
-            onLeaveVC={leaveVoiceChat}
-            onToggleMute={toggleMuteMic}
-            onTestSpeakingPulse={triggerTestSpeakingPulse}
-            onSendMessage={handleSendMessage}
-            onToggleReaction={handleToggleReaction}
-            onSelectTrackFromQueue={handleSelectTrackFromQueue}
-            onRemoveQueueItem={handleRemoveQueueItem}
-            onReorderQueueItem={handleReorderQueueItem}
-            onTransferHost={handleTransferHost}
-            onKickMember={handleKickMember}
-            roomHostUserId={room.hostUserId}
-            roomHostUsername={room.hostUsername}
-          />
+          {roomViewMode === 'arcade' && (
+            <div className="space-y-3">
+              <GameHub
+                members={members}
+                currentUser={currentUser}
+                isHost={isHost}
+                onSendGameAction={handleSendGameAction}
+                lastIncomingAction={lastIncomingGameAction}
+              />
+              <LoungeMusicBar
+                playback={playback}
+                queue={queue}
+                isHost={isHost}
+                onPlaybackAction={handlePlaybackAction}
+                onOpenSearch={(tab) => {
+                  if (tab) setSearchTab(tab);
+                  setSearchOpen(true);
+                }}
+                onOpenQueue={() => {
+                  if (window.innerWidth < 1024) {
+                    setMobileTab('queue');
+                  }
+                }}
+                onSwitchToTheaterMode={() => setRoomViewMode('theater')}
+              />
+            </div>
+          )}
+
+          {/* YouTube Player: visible in theater mode, off-screen in arcade mode to preserve synchronized audio */}
+          <div
+            className={
+              roomViewMode === 'theater'
+                ? 'block space-y-4'
+                : 'absolute w-1 h-1 opacity-0 pointer-events-none -top-[9999px] -left-[9999px] overflow-hidden'
+            }
+          >
+            <YouTubePlayer
+              playback={playback}
+              isHost={isHost}
+              onPlaybackAction={handlePlaybackAction}
+              onRequestSyncCheck={() => sendWsMessage('playback:request_sync')}
+              onOpenSearch={(tab) => {
+                if (tab) setSearchTab(tab);
+                setSearchOpen(true);
+              }}
+              queue={queue}
+              messages={messages}
+              members={members}
+              currentUser={currentUser}
+              inVoiceChat={inVoiceChat}
+              isMuted={isMuted}
+              isSpeaking={isSpeaking}
+              connectionStatus={connectionStatus}
+              permissionNotice={permissionNotice}
+              audioDevices={audioDevices}
+              selectedDeviceId={selectedDeviceId}
+              onSelectDevice={setSelectedDeviceId}
+              peerStatuses={peerStatuses}
+              onJoinVC={joinVoiceChat}
+              onLeaveVC={leaveVoiceChat}
+              onToggleMute={toggleMuteMic}
+              onTestSpeakingPulse={triggerTestSpeakingPulse}
+              onSendMessage={handleSendMessage}
+              onToggleReaction={handleToggleReaction}
+              onSelectTrackFromQueue={handleSelectTrackFromQueue}
+              onRemoveQueueItem={handleRemoveQueueItem}
+              onReorderQueueItem={handleReorderQueueItem}
+              onTransferHost={handleTransferHost}
+              onKickMember={handleKickMember}
+              roomHostUserId={room.hostUserId}
+              roomHostUsername={room.hostUsername}
+            />
+          </div>
 
           {/* MOBILE ONLY: Sleek Segmented Navigation Tabs */}
           <div className="lg:hidden space-y-3">
